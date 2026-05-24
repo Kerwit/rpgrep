@@ -1,0 +1,42 @@
+# Corpus dorado para tests de calidad semántica (Capa B) y harness comparativo (Capa D).
+#
+# Formato TSV (3 columnas, tab-separadas):
+#   query                                  | expected_substrings (comma-sep)            | expected_files (comma-sep)
+#
+# Reglas:
+#   - El corpus indexable es `src/` del propio repositorio rpgrep.
+#   - Un chunk se considera RELEVANTE si su `text` (lowercase) contiene
+#     al menos una de las expected_substrings (lowercase, plain match).
+#   - `expected_files` es informativo: si está, ayuda al harness comparativo
+#     a verificar que grep/sg encuentran al menos uno de esos archivos.
+#   - Líneas que empiezan por `#` son comentarios; se ignoran.
+#   - Líneas en blanco se ignoran.
+#
+# 25 pares query↔relevantes, etiquetados manualmente sobre el código actual.
+# Si refactorizas src/ y rompes una etiqueta, ACTUALIZA esta tabla.
+#
+simulated annealing temperature schedule	metropolis,initial_temp,alpha,annealer	src/search/qubo.rs
+xor filter zero false negatives	xor8,xorf,filter,candidates	src/index/bloom.rs
+cosine distance in hnsw nearest neighbor	cosine,distance,dot,hnsw	src/index/hnsw.rs
+budget penalty overflow soft constraint	overflow,budget,penalty,mu	src/search/qubo.rs
+estimate tokens per chunk	token_estimate,tokens	src/chunk/mod.rs
+load embedding model from disk	textembedding,embeddingmodel,try_new	src/embed/mod.rs
+persist index to bincode file	bincode,serialize,save,load	src/index/store.rs
+walk directory tree for indexing	walkdir,index,dispatch	src/cli.rs
+cli search subcommand definition	search,subcommand,clap	src/cli.rs
+trigram jaccard similarity matrix	trigram,jaccard,similarity	src/search/pipeline.rs
+greedy initialization heuristic	greedy_init,order,sort_by	src/search/qubo.rs
+chunk overlap stride calculation	stride,overlap,lines_per_chunk	src/chunk/mod.rs
+custom error type with thiserror	rpgreperror,thiserror,error	src/lib.rs
+implement point trait for distance	impl point,fn distance,embeddedpoint	src/index/hnsw.rs
+hash unique tokens for bloom filter	unique_token_hashes,defaulthasher,hash	src/index/bloom.rs
+search pipeline orchestrator entry point	searchpipeline,pipeline,orchestrac	src/search/pipeline.rs
+metropolis acceptance criterion	metropolis,acceptance,delta	src/search/qubo.rs
+random seed for reproducible solver	seed,stdrng,seed_from_u64	src/search/qubo.rs
+line based file chunking	chunk_file,lines,line	src/chunk/mod.rs
+hnsw builder construction with ef	builder,ef_construction,hnswmap	src/index/hnsw.rs
+relevance score in qubo formulation	relevance,r_i,score	src/search/qubo.rs
+minilm embedding model name	minilm,all-minilm,allminil	src/embed/mod.rs
+clap derive parser for cli	derive(parser),parser,subcommand	src/cli.rs
+anyhow context for error chain	context,anyhow,result	src/cli.rs
+search result struct definition	searchresult,struct,chunk,score	src/search/pipeline.rs

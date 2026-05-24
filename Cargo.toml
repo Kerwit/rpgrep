@@ -1,0 +1,59 @@
+[package]
+name = "rpgrep"
+version = "0.1.0"
+edition = "2021"
+authors = ["Kerwit"]
+description = "Búsqueda semántica de código mediante pipeline probabilístico (Bloom + HNSW + QUBO)"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+
+[dependencies]
+# Embeddings (ONNX, CPU)
+fastembed = "4"
+
+# Approximate Nearest Neighbors
+instant-distance = { version = "0.6", features = ["with-serde"] }
+
+# Filtros probabilísticos
+xorf = { version = "0.11", features = ["serde"] }
+
+# Optimización Ising/QUBO (puro Rust, sin deps externas pesadas)
+rand = "0.8"
+rand_distr = "0.4"
+rayon = "1"
+
+# Persistencia
+serde = { version = "1", features = ["derive"] }
+bincode = "1"
+memmap2 = "0.9"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Infraestructura
+anyhow = "1"
+thiserror = "1"
+walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"
+criterion = { version = "0.5", features = ["html_reports"] }
+rand_chacha = "0.3"
+
+[lib]
+name = "rpgrep"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rpgrep"
+path = "src/main.rs"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+strip = true
+
+[[bench]]
+name = "pipeline"
+harness = false

@@ -1,0 +1,6 @@
+/target
+.rpgrep/
+*.bin
+*.idx
+Cargo.lock
+.DS_Store
