@@ -51,6 +51,7 @@ pub fn build_synthetic_store(n_chunks: usize, seed: u64) -> IndexStore {
 
     for f in 0..n_files {
         let path = PathBuf::from(format!("synth/file_{f:06}.rs"));
+        let file_str = path.to_string_lossy().into_owned();
         let mut content = String::new();
         let chunks_in_file = if f == n_files - 1 {
             n_chunks - chunks.len()
@@ -68,7 +69,7 @@ pub fn build_synthetic_store(n_chunks: usize, seed: u64) -> IndexStore {
             content.push_str(&text);
             chunks.push(Chunk {
                 id: global_idx as u64,
-                file: path.clone(),
+                file: file_str.clone(),
                 start_line: c * 4 + 1,
                 end_line: c * 4 + 4,
                 text,

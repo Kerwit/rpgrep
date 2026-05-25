@@ -20,7 +20,7 @@ use std::hash::{Hash, Hasher};
 pub const DEFAULT_K: usize = 128;
 const MIN_TOKEN_LEN: usize = 3;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct MinHash {
     /// K hashes mínimos. `sig[i]` = min sobre todos los tokens del
     /// `Hash64(i || token_lowercased)`.

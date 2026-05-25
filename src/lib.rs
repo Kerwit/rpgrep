@@ -26,6 +26,9 @@ pub enum RpgrepError {
 
     #[error("Serialization: {0}")]
     Serde(#[from] bincode::Error),
+
+    #[error("Persist: {0}")]
+    Persist(String),
 }
 
 pub type Result<T> = std::result::Result<T, RpgrepError>;

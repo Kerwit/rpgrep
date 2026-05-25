@@ -107,7 +107,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             for r in results {
                 println!(
                     "{}:{}-{}  score={:.3}",
-                    r.chunk.file.display(),
+                    r.chunk.file,
                     r.chunk.start_line,
                     r.chunk.end_line,
                     r.score,

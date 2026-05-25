@@ -217,15 +217,21 @@ Gate de latencia (`cargo test --release --test p95_gate -- --ignored`):
 
 | Etapa               | Tamaño  | P50 (ms) | P95 (ms) | P99 (ms) |
 |---------------------|---------|----------|----------|----------|
-| **gate (100k)**     | **100k**| 50.0     | **52.4** | 56.8     |
+| **gate v0.1 (bincode)** | **100k** | 50.0 | 52.4     | 56.8     |
+| **gate v0.2 (rkyv)**    | **100k** | 47.8 | **50.2** | 50.4     |
 
 Gate: **P95 < 150 ms @ 100k chunks** (BLUEPRINT §1). Si falla, documentar
 la regresión aquí con timestamp y hash del commit.
 
 Ejecución de referencia (2026-05-25, `--release`, corpus sintético seed=0xE5,
 50 queries tras 3 de warm-up, budget=4000 tokens, top_n=50): el gate
-**PASA con holgura ~3×** (P95=52.4 ms vs gate 150 ms). Construcción del
-corpus de 100k chunks en ~1.3 s; ejecución total del test ~4.0 s.
+**PASA con holgura ~3×** (P95=50.2 ms vs gate 150 ms). Construcción del
+corpus de 100k chunks en ~1.3 s; ejecución total del test ~3.9 s. La
+mejora P95 (52.4 → 50.2 ms) es marginal: el gate construye el corpus en
+memoria y no toca `save`/`load`, así que la migración de persistencia no
+puede mover esta métrica significativamente — el beneficio real de rkyv
+aparece en operaciones de carga repetidas (CLI `search` sobre índices
+grandes), pendiente de microbench dedicado.
 
 ### 5.3 Capa D — Tabla comparativa (extracto de `bench_compare.sh`)
 

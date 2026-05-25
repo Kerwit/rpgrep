@@ -6,12 +6,15 @@
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct Chunk {
     pub id: u64,
-    pub file: PathBuf,
+    /// Ruta del archivo origen en forma de string (rkyv no archiva
+    /// `PathBuf` directamente en v0.8; `chunk_id` sigue hasheando sobre
+    /// `&Path` así que la estabilidad de IDs no se ve afectada).
+    pub file: String,
     pub start_line: usize,
     pub end_line: usize,
     pub text: String,
@@ -46,7 +49,7 @@ pub fn chunk_file(
         let text = lines[i..end].join("\n");
         chunks.push(Chunk {
             id: chunk_id(path, i),
-            file: path.to_path_buf(),
+            file: path.to_string_lossy().into_owned(),
             start_line: i + 1,
             end_line: end,
             text,

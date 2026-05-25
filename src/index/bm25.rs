@@ -25,7 +25,7 @@ const K1: f32 = 1.5;
 const B: f32 = 0.75;
 const MIN_TOKEN_LEN: usize = 3;
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, Clone, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct Bm25Index {
     /// chunk_id → (token_hash → frecuencia de ese token en el chunk).
     pub term_freq: HashMap<u64, HashMap<u64, u32>>,
@@ -177,12 +177,10 @@ pub(crate) fn tokenize(text: &str) -> impl Iterator<Item = u64> + '_ {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-
     fn make_chunk(id: u64, text: &str) -> Chunk {
         Chunk {
             id,
-            file: PathBuf::from(format!("c{id}.rs")),
+            file: format!("c{id}.rs"),
             start_line: 1,
             end_line: 1,
             text: text.to_string(),
