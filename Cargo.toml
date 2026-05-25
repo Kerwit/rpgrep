@@ -27,6 +27,9 @@ clap = { version = "4", features = ["derive"] }
 # Watch (modo `rpgrep watch`)
 notify-debouncer-mini = "0.4"                # batched fs events sobre `notify`
 
+# Serve (modo `rpgrep serve`)
+serde_json = "1"                             # wire JSON sobre Unix socket
+
 # Infraestructura
 anyhow = "1"
 thiserror = "1"

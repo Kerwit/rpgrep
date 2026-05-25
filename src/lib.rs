@@ -13,6 +13,7 @@
 pub mod chunk;
 pub mod index;
 pub mod search;
+pub mod serve;
 
 pub use search::pipeline::{SearchPipeline, SearchResult};
 

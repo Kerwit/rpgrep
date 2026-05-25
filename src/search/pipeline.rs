@@ -17,7 +17,7 @@ use crate::index::store::IndexStore;
 use crate::search::qubo::{QuboProblem, SimulatedAnnealer};
 use crate::Result;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SearchResult {
     pub chunk: Chunk,
     pub score: f32,

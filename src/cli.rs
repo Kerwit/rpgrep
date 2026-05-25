@@ -66,6 +66,18 @@ pub enum Commands {
         index: PathBuf,
     },
 
+    /// Sirve queries contra un índice en memoria vía Unix socket.
+    /// Protocolo: JSON-line (una request = una response = cierre).
+    Serve {
+        /// Directorio del índice persistido a cargar al arrancar.
+        #[arg(long, default_value = ".rpgrep")]
+        index: PathBuf,
+
+        /// Path del socket Unix. Default: `<index>/rpgrep.sock`.
+        #[arg(long)]
+        socket: Option<PathBuf>,
+    },
+
     /// Mantiene un índice sincronizado con un directorio: indexa
     /// inicialmente y re-indexa al detectar cambios.
     Watch {
@@ -139,6 +151,10 @@ pub fn dispatch(cli: Cli) -> Result<()> {
                 );
             }
             Ok(())
+        }
+        Commands::Serve { index, socket } => {
+            let sock = socket.unwrap_or_else(|| rpgrep::serve::default_socket_path(&index));
+            rpgrep::serve::run(&index, &sock).map_err(anyhow::Error::from)
         }
         Commands::Watch {
             path,

@@ -104,7 +104,9 @@ vía relajación térmica simulada.
 - ✅ Modo `watch` con `notify-debouncer-mini`: re-indexa el árbol
   ante cada quiet period (default 500 ms, configurable con
   `--debounce-ms`).
-- Modo `serve` con Unix socket
+- ✅ Modo `serve` con Unix socket: `rpgrep serve --index .rpgrep`
+  expone JSON-line sobre `<index>/rpgrep.sock`. Ej.:
+  `echo '{"query":"…","budget":4000,"topk":50}' | nc -U <socket>`.
 - ⏳ Zero-copy real: `IndexStore::load_archived() -> &ArchivedIndexStore`
   (refactor de `SearchPipeline` para operar sobre tipos archivados;
   el formato `RPGRP003` ya soporta esto, solo falta el frontal)
