@@ -3,17 +3,11 @@ name = "rpgrep"
 version = "0.1.0"
 edition = "2021"
 authors = ["Kerwit"]
-description = "Búsqueda semántica de código mediante pipeline probabilístico (Bloom + HNSW + QUBO)"
+description = "Búsqueda probabilística de código sin modelos de lenguaje (Xor + BM25 + MinHash + QUBO)"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 
 [dependencies]
-# Embeddings (ONNX, CPU)
-fastembed = "4"
-
-# Approximate Nearest Neighbors
-instant-distance = { version = "0.6", features = ["with-serde"] }
-
 # Filtros probabilísticos
 xorf = { version = "0.11", features = ["serde"] }
 

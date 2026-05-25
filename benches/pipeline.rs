@@ -1,18 +1,14 @@
 //! Benchmarks de latencia del pipeline (Capa C).
 //!
-//! Usan **embeddings sintéticos** (vectores random normalizados a 384 dims
-//! = MiniLM L6 v2). NO miden la latencia del `Embedder` (fase ONNX), miden
-//! exclusivamente el pipeline post-embedding: Xor → HNSW → QUBO.
-//!
-//! Justificación: la fase de embedding es la única red-dependent y la única
-//! que requiere el modelo ONNX descargado. Aislarla permite mediciones
-//! reproducibles y offline. La latencia real end-to-end = bench + tiempo
-//! de `Embedder::embed(query)` (~10-30 ms para una query corta en CPU).
+//! Pipeline 100% probabilístico: Xor + BM25 + MinHash + QUBO. Cero
+//! embeddings, cero red, cero descargas. El bench mide la latencia
+//! end-to-end real — no queda ninguna fase neuronal que aislar.
 //!
 //! El gate P95 < 150 ms (BLUEPRINT §1) se verifica en `tests/p95_gate.rs`
-//! sobre 100k chunks; aquí Criterion reporta P50/P95/P99 sobre 1k y 10k.
+//! sobre 100k chunks; aquí Criterion reporta P50/P95/P99 sobre 1k y 10k
+//! para cada etapa por separado y para el pipeline completo.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
@@ -21,29 +17,24 @@ use rand_chacha::ChaCha8Rng;
 
 use rpgrep::chunk::Chunk;
 use rpgrep::index::bloom::FileBloomIndex;
-use rpgrep::index::hnsw::HnswIndex;
+use rpgrep::index::bm25::Bm25Index;
+use rpgrep::index::minhash::MinHash;
 use rpgrep::index::store::IndexStore;
 use rpgrep::search::qubo::{QuboProblem, SimulatedAnnealer};
+use rpgrep::SearchPipeline;
 
-const DIM: usize = 384;
 const CHUNKS_PER_FILE: usize = 40;
 
-fn unit_vector(rng: &mut ChaCha8Rng) -> Vec<f32> {
-    let raw: Vec<f32> = (0..DIM).map(|_| rng.gen::<f32>() - 0.5).collect();
-    let norm: f32 = raw.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-12);
-    raw.into_iter().map(|x| x / norm).collect()
-}
-
-/// Construye un IndexStore sintético reproducible: `n_chunks` chunks
-/// repartidos entre `n_chunks/CHUNKS_PER_FILE` archivos. Embeddings random
-/// normalizados. Tokens reales para que el Xor filter sea representativo.
+/// Construye un IndexStore sintético reproducible. Tokens reales
+/// (`var_unique_X`, `handler_shared`, `compute_Y_Z`, `filler_R`) para que
+/// BM25 y MinHash tengan distribución no trivial.
+///
+/// SYNCED con `tests/p95_gate.rs::build_synthetic_store`.
 pub fn build_synthetic_store(n_chunks: usize, seed: u64) -> IndexStore {
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
     let n_files = (n_chunks / CHUNKS_PER_FILE).max(1);
 
     let mut chunks: Vec<Chunk> = Vec::with_capacity(n_chunks);
-    let mut vectors: Vec<Vec<f32>> = Vec::with_capacity(n_chunks);
-    let mut ids: Vec<u64> = Vec::with_capacity(n_chunks);
     let mut bloom = FileBloomIndex::new();
 
     for f in 0..n_files {
@@ -54,89 +45,40 @@ pub fn build_synthetic_store(n_chunks: usize, seed: u64) -> IndexStore {
         } else {
             CHUNKS_PER_FILE
         };
-
         for c in 0..chunks_in_file {
             let global_idx = chunks.len();
+            let filler: u32 = rng.gen_range(0..10_000);
             let text = format!(
-                "fn fn_{global_idx:06}() {{\n    let var_unique_{global_idx:06} = compute_{f:04}_{c:04}();\n    handler_shared();\n}}\n"
+                "fn fn_{global_idx:06}() {{\n    let var_unique_{global_idx:06} = compute_{f:04}_{c:04}();\n    handler_shared(filler_{filler:05});\n}}\n"
             );
             content.push_str(&text);
-
             chunks.push(Chunk {
-                id: global_idx as u64, // ID denso sintético
+                id: global_idx as u64,
                 file: path.clone(),
                 start_line: c * 4 + 1,
                 end_line: c * 4 + 4,
                 text,
             });
-            vectors.push(unit_vector(&mut rng));
-            ids.push(global_idx as u64);
         }
-
         bloom.add_file(path, &content);
     }
 
-    let hnsw = HnswIndex::build(vectors, ids);
+    let bm25 = Bm25Index::build(&chunks);
+    let minhash: HashMap<u64, MinHash> = chunks
+        .iter()
+        .map(|c| (c.id, MinHash::from_text(&c.text)))
+        .collect();
+
     IndexStore {
         chunks,
         bloom,
-        hnsw,
+        bm25,
+        minhash,
     }
-}
-
-/// Replica la lógica de `SearchPipeline::search` (pipeline.rs:31-96) PERO
-/// recibe el query-vector ya calculado, evitando el `Embedder`. Mide
-/// exclusivamente Xor + HNSW + QUBO.
-pub fn pipeline_post_embed(
-    store: &IndexStore,
-    query_text: &str,
-    qvec: &[f32],
-    budget: usize,
-    topk: usize,
-) -> usize {
-    let candidate_files = store.bloom.candidates(query_text);
-    let candidate_set: HashSet<_> = candidate_files.into_iter().collect();
-
-    let hnsw_results = store.hnsw.search(qvec, topk.max(10));
-    let chunks_by_id: std::collections::HashMap<u64, &Chunk> =
-        store.chunks.iter().map(|c| (c.id, c)).collect();
-
-    let filtered: Vec<(&Chunk, f32)> = hnsw_results
-        .into_iter()
-        .filter_map(|(id, dist)| {
-            let c = *chunks_by_id.get(&id)?;
-            let pass = candidate_set.is_empty() || candidate_set.contains(&c.file);
-            if pass {
-                Some((c, 1.0 - dist))
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    if filtered.is_empty() {
-        return 0;
-    }
-
-    let relevance: Vec<f32> = filtered.iter().map(|(_, s)| *s).collect();
-    let tokens: Vec<usize> = filtered.iter().map(|(c, _)| c.token_estimate()).collect();
-    let similarity = vec![vec![0.0_f32; filtered.len()]; filtered.len()];
-
-    let problem = QuboProblem {
-        relevance,
-        similarity,
-        tokens,
-        budget,
-        lambda: 0.5,
-        mu: 0.001,
-    };
-    let solver = SimulatedAnnealer::default();
-    let assignment = solver.solve(&problem);
-    assignment.iter().filter(|x| **x).count()
 }
 
 // ---------------------------------------------------------------------------
-// Benches Criterion
+// Benches por etapa
 // ---------------------------------------------------------------------------
 
 fn bench_xor_candidates(c: &mut Criterion) {
@@ -152,14 +94,20 @@ fn bench_xor_candidates(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_hnsw_topk(c: &mut Criterion) {
-    let mut group = c.benchmark_group("hnsw_topk");
-    let mut rng = ChaCha8Rng::seed_from_u64(0xB2);
-    let qvec = unit_vector(&mut rng);
+fn bench_bm25_topn(c: &mut Criterion) {
+    let mut group = c.benchmark_group("bm25_topn");
+    let q = "var_unique_000007 handler_shared compute_0000";
     for &n in &[1_000usize, 10_000] {
         let store = build_synthetic_store(n, 0xB2);
+        let all_ids: Vec<u64> = store.chunks.iter().map(|c| c.id).collect();
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
-            b.iter(|| std::hint::black_box(store.hnsw.search(std::hint::black_box(&qvec), 50)));
+            b.iter(|| {
+                std::hint::black_box(store.bm25.top_n(
+                    std::hint::black_box(q),
+                    std::hint::black_box(&all_ids),
+                    50,
+                ))
+            });
         });
     }
     group.finish();
@@ -195,23 +143,15 @@ fn bench_qubo_anneal(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_pipeline_post_embed(c: &mut Criterion) {
-    let mut group = c.benchmark_group("pipeline_post_embed");
-    let mut rng = ChaCha8Rng::seed_from_u64(0xD4);
-    let qvec = unit_vector(&mut rng);
-    let qtext = "var_unique_000007 handler_shared";
-
+fn bench_pipeline_e2e(c: &mut Criterion) {
+    let mut group = c.benchmark_group("pipeline_e2e");
+    let qtext = "var_unique_000007 handler_shared compute_0000";
     for &n in &[1_000usize, 10_000] {
         let store = build_synthetic_store(n, 0xD4);
+        let pipeline = SearchPipeline::from_store(store);
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
             b.iter(|| {
-                std::hint::black_box(pipeline_post_embed(
-                    std::hint::black_box(&store),
-                    qtext,
-                    &qvec,
-                    4000,
-                    50,
-                ))
+                std::hint::black_box(pipeline.search(std::hint::black_box(qtext), 4000, 50))
             });
         });
     }
@@ -221,6 +161,6 @@ fn bench_pipeline_post_embed(c: &mut Criterion) {
 criterion_group! {
     name = benches;
     config = Criterion::default().sample_size(20);
-    targets = bench_xor_candidates, bench_hnsw_topk, bench_qubo_anneal, bench_pipeline_post_embed
+    targets = bench_xor_candidates, bench_bm25_topn, bench_qubo_anneal, bench_pipeline_e2e
 }
 criterion_main!(benches);

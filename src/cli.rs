@@ -1,10 +1,13 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+use std::time::Instant;
+
+use rpgrep::index::store::IndexStore;
 
 #[derive(Parser)]
 #[command(name = "rpgrep")]
-#[command(about = "Búsqueda semántica probabilística para código", long_about = None)]
+#[command(about = "Búsqueda probabilística para código (Xor + BM25 + MinHash + QUBO)", long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -29,6 +32,11 @@ pub enum Commands {
         /// Líneas de solapamiento entre chunks consecutivos
         #[arg(long, default_value_t = 8)]
         overlap: usize,
+
+        /// Extensiones a indexar (sin punto). Por defecto: rs.
+        /// Pasa `--ext ""` para indexar TODOS los archivos.
+        #[arg(long, value_delimiter = ',', default_values_t = vec!["rs".to_string()])]
+        ext: Vec<String>,
     },
 
     /// Búsqueda semántica con presupuesto de tokens
@@ -64,15 +72,24 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             out,
             lines,
             overlap,
+            ext,
         } => {
             eprintln!("[rpgrep] Indexando {} → {}", path.display(), out.display());
-            // TODO (siguiente paso de implementación):
-            //   1. walkdir sobre `path`
-            //   2. para cada archivo: chunk::chunk_file(path, lines, overlap)
-            //   3. embedder.embed_batch(textos)
-            //   4. construir HnswIndex y FileBloomIndex
-            //   5. IndexStore::save(&out)
-            anyhow::bail!("Comando `index` pendiente de cablear — ver TODO en src/cli.rs");
+            let exts: Vec<&str> = ext.iter().map(|s| s.as_str()).collect();
+            let t0 = Instant::now();
+            let store = IndexStore::from_dir(&path, &exts, lines, overlap)
+                .with_context(|| format!("construir índice de {}", path.display()))?;
+            eprintln!(
+                "[rpgrep] {} chunks, {} archivos indexados en {:.2}s",
+                store.chunks.len(),
+                store.n_files(),
+                t0.elapsed().as_secs_f64()
+            );
+            store
+                .save(&out)
+                .with_context(|| format!("persistir índice en {}", out.display()))?;
+            eprintln!("[rpgrep] índice guardado en {}", out.display());
+            Ok(())
         }
         Commands::Search {
             query,
@@ -99,8 +116,14 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             Ok(())
         }
         Commands::Stats { index } => {
-            eprintln!("[rpgrep] Stats de {}", index.display());
-            // TODO: cargar IndexStore y emitir contadores (chunks, archivos, dim).
+            let store = IndexStore::load(&index).context("cargando índice persistido")?;
+            println!("ruta:           {}", index.display());
+            println!("archivos:       {}", store.n_files());
+            println!("chunks:         {}", store.chunks.len());
+            println!("bm25 n_docs:    {}", store.bm25.n_docs);
+            println!("bm25 avg_dl:    {:.1} tokens", store.bm25.avg_doc_len);
+            println!("vocab (tokens): {}", store.bm25.doc_freq.len());
+            println!("minhash sigs:   {} firmas", store.minhash.len());
             Ok(())
         }
     }

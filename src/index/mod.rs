@@ -1,3 +1,4 @@
 pub mod bloom;
-pub mod hnsw;
+pub mod bm25;
+pub mod minhash;
 pub mod store;

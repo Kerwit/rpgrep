@@ -1,11 +1,14 @@
 # rpgrep
 
-Búsqueda semántica de código mediante pipeline probabilístico clásico
-(**Bloom/Xor → HNSW → QUBO + Simulated Annealing**).
+Búsqueda probabilística de código sin modelos de lenguaje
+(**Xor filter → BM25 → MinHash → QUBO + Simulated Annealing**).
 
-Sustituto de `grep` que comprende significado en lugar de coincidencias léxicas.
-Equivalente al Hamiltoniano de Ising que resolvería un p-bit físico, ejecutado
-sobre CPU mediante muestreo Metropolis. Cero hardware especial.
+Sustituto de `grep` que produce un *bundle* de contexto óptimo bajo budget
+de tokens: relevante, diverso y matemáticamente puro. El término final del
+pipeline es un Hamiltoniano de Ising — exactamente lo que un p-bit /
+annealer cuántico resolvería físicamente, aquí ejecutado sobre CPU con
+muestreo Metropolis. Cero hardware especial, cero pesos pre-entrenados,
+cero descargas, cero red.
 
 ## Pipeline
 
@@ -13,13 +16,16 @@ sobre CPU mediante muestreo Metropolis. Cero hardware especial.
 Query del usuario
    │
    ▼
-[A] Xor filter pre-screen          ~0.1  ms   (cero falsos negativos)
+[A] Xor filter pre-screen          ~0.1  ms   cero falsos negativos
    │
    ▼
-[B] HNSW retrieval (top-K)         ~10-30 ms  (ANN aproximado)
+[B] BM25 scoring (rᵢ)              ~1-10 ms   relevancia probabilística
    │
    ▼
-[D] QUBO + Simulated Annealing     ~30   ms   (selección óptima bajo budget)
+[C] MinHash Jaccard (sᵢⱼ)          ~1-5  ms   redundancia estimada
+   │
+   ▼
+[D] QUBO + Simulated Annealing     ~10-30 ms  selección óptima bajo budget
    │
    ▼
 Contexto óptimo  (relevante + diverso + dentro de presupuesto)
@@ -32,14 +38,17 @@ Latencia P95 objetivo: **<150 ms** end-to-end sobre 100k chunks.
 ### CLI
 
 ```bash
-# Indexar un directorio
+# Indexar un directorio (por defecto: archivos .rs)
 rpgrep index ./mi-proyecto --out .rpgrep
 
+# Indexar varias extensiones
+rpgrep index ./mi-proyecto --ext rs,md,toml --out .rpgrep
+
 # Buscar con presupuesto de 4000 tokens
-rpgrep search "manejo de errores en conexiones HTTP" --budget 4000
+rpgrep search "manejo de errores en conexiones" --budget 4000
 
 # Estadísticas del índice
-rpgrep stats
+rpgrep stats --index .rpgrep
 ```
 
 ### Como crate
@@ -62,54 +71,55 @@ for r in results {
 
 ## Arquitectura
 
-| Módulo                 | Responsabilidad                                |
-|------------------------|------------------------------------------------|
-| `chunk/`               | Segmentación line-based con solapamiento       |
-| `embed/`               | Embeddings vía `fastembed` (MiniLM L6 v2)      |
-| `index/bloom.rs`       | Xor filter por archivo (Graf & Lemire 2020)    |
-| `index/hnsw.rs`        | ANN con `instant-distance`, distancia coseno   |
-| `index/store.rs`       | Persistencia con `bincode`                     |
-| `search/qubo.rs`       | Simulated Annealing puro Rust (Metropolis)     |
-| `search/pipeline.rs`   | Orquestador A→B→D                              |
+| Módulo                 | Responsabilidad                                       |
+|------------------------|-------------------------------------------------------|
+| `chunk/`               | Segmentación line-based con solapamiento, IDs estables|
+| `index/bloom.rs`       | Xor filter por archivo (Graf & Lemire 2020)           |
+| `index/bm25.rs`        | BM25 puro Rust (Robertson 1994) — provee `rᵢ`         |
+| `index/minhash.rs`     | MinHash signatures (Broder 1997) — provee `sᵢⱼ`       |
+| `index/store.rs`       | Persistencia con `bincode` + `IndexStore::from_dir`   |
+| `search/qubo.rs`       | Simulated Annealing puro Rust (Metropolis)            |
+| `search/pipeline.rs`   | Orquestador A→B→C→D                                   |
 
-## Estado: v0.1 — scaffold
+Cero crates de ML, cero ONNX runtime, cero archivos de modelo. Solo
+matemática clásica: hashing aleatorizado, modelo probabilístico de
+relevancia, estimador insesgado de Jaccard, optimización combinatoria
+vía relajación térmica simulada.
 
-**Implementado y funcional:**
-- ✅ QUBO + Simulated Annealing con tests (incluye test de diversidad)
-- ✅ Xor filter por archivo con test de zero-false-negative
-- ✅ Chunking por líneas con solapamiento y test
+## Estado: v0.1 — funcional end-to-end
+
+**Implementado y testeado:**
+- ✅ QUBO + Simulated Annealing puro Rust con seed fija (R2)
+- ✅ Xor filter por archivo con test de zero-false-negative (R3)
+- ✅ BM25 con tests de IDF, normalización por longitud, top-N filtrado
+- ✅ MinHash con tests de identidad, disjunción, error estadístico
+- ✅ Chunking por líneas con solapamiento e IDs estables (R4)
 - ✅ Persistencia con bincode
-- ✅ Estructura CLI completa con `clap`
-- ✅ Pipeline orquestador completo
-
-**Pendiente de cablear** (sin trabajo conceptual, solo glue):
-- ⏳ `Commands::Index` en `src/cli.rs` — el TODO marcado describe los pasos exactos
-- ⏳ Verificar versiones actuales de `fastembed` e `instant-distance` (APIs evolucionan)
-- ⏳ Tests de integración end-to-end
+- ✅ CLI con `clap`: `index` / `search` / `stats` totalmente cableados
+- ✅ Pipeline orquestador completo (Xor → BM25 → MinHash → QUBO)
+- ✅ Test de calidad sobre corpus dorado: **MRR=1.000, Recall@5=0.37**
 
 **Hoja de ruta v0.2:**
-- Cross-encoder re-ranking (paso [C] del pipeline)
 - AST-aware chunking con `tree-sitter`
 - Modo `watch` con `notify` (re-indexación incremental)
-- Modo `serve` con Unix socket (integración con Sidecar Kerwit)
+- Modo `serve` con Unix socket
 - Migración a `rkyv` + `memmap2` para carga zero-copy
-- Sustituir similitud por trigramas con similitud coseno de embeddings persistidos
 
 ## Verificación rápida
 
 ```bash
-cd rpgrep
-cargo check                                # compilación
-cargo test --lib search::qubo              # tests del solver QUBO
-cargo test --lib index::bloom              # tests del Xor filter
+cargo check                                   # compilación
+cargo test --lib                              # tests unitarios (BM25, MinHash, QUBO, Bloom, Chunk)
+cargo test --test pipeline_invariants         # invariantes (Capa A)
+cargo test --test semantic_quality            # calidad sobre corpus dorado (Capa B)
+cargo test --release --test p95_gate -- --ignored  # gate de latencia (Capa C)
 ```
 
 ## Bibliografía
 
-- Indyk & Motwani 1998 — *Approximate nearest neighbors via LSH*
-- Malkov & Yashunin 2016 — *HNSW: Efficient and robust ANN*
-- Jégou, Douze, Schmid 2011 — *Product Quantization*
 - Graf & Lemire 2020 — *Xor filters: Faster and smaller than Bloom filters*
+- Robertson & Walker 1994 — *Some simple effective approximations to the 2-Poisson model for probabilistic weighted retrieval* (BM25)
+- Broder 1997 — *On the resemblance and containment of documents* (MinHash)
 - Kirkpatrick, Gelatt, Vecchi 1983 — *Optimization by Simulated Annealing*
 
 ## Licencia

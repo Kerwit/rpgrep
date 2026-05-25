@@ -1,16 +1,16 @@
-//! rpgrep — Búsqueda semántica de código mediante pipeline probabilístico clásico.
+//! rpgrep — Búsqueda probabilística de código sin modelos de lenguaje.
 //!
-//! Pipeline:
-//!   [A] Xor filter pre-screen   → descarta archivos sin tokens relevantes (O(1))
-//!   [B] HNSW retrieval          → top-K aproximado sobre embeddings
-//!   [C] (Opcional) Re-rank      → cross-encoder ligero (v0.2)
+//! Pipeline 100% matemático (cero pesos pre-entrenados, cero descargas):
+//!   [A] Xor filter pre-screen   → descarta archivos sin tokens (O(1), cero FN)
+//!   [B] BM25 scoring            → relevancia probabilística rᵢ (Robertson 1994)
+//!   [C] MinHash signatures      → similitud Jaccard sᵢⱼ insesgada (Broder 1997)
 //!   [D] QUBO + Simulated Annealing → selección óptima bajo budget de tokens
 //!
-//! Equivalente al Hamiltoniano de Ising que resolvería un p-bit físico,
-//! aquí ejecutado sobre CPU mediante muestreo Metropolis.
+//! El Hamiltoniano de Ising de [D] es exactamente lo que un p-bit / annealer
+//! cuántico resolvería físicamente. Aquí lo ejecutamos sobre CPU vía
+//! muestreo Metropolis: misma matemática, distinto sustrato.
 
 pub mod chunk;
-pub mod embed;
 pub mod index;
 pub mod search;
 
@@ -20,9 +20,6 @@ pub use search::pipeline::{SearchPipeline, SearchResult};
 pub enum RpgrepError {
     #[error("I/O: {0}")]
     Io(#[from] std::io::Error),
-
-    #[error("Embedding: {0}")]
-    Embedding(String),
 
     #[error("Index: {0}")]
     Index(String),

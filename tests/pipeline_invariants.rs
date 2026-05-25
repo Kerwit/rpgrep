@@ -81,12 +81,11 @@ fn chunk_id_is_stable_across_reindex() {
 // ---------------------------------------------------------------------------
 // A3 — R3: contrato "query sin tokens ≥3 chars → candidates devuelve TODOS".
 //
-// Este es el contrato sobre el que `SearchPipeline::search` (pipeline.rs:33-49)
-// apoya su garantía de "candidate_set vacío conserva todos los chunks del HNSW".
-// Si este contrato se rompe en `FileBloomIndex::candidates`, la garantía de
-// alto nivel también se rompe. Testar la garantía a nivel del pipeline
-// completo requeriría `Embedder` (red); aquí testeamos el invariante base
-// que sostiene la lógica de pipeline.rs:49.
+// Este es el contrato sobre el que `SearchPipeline::search` apoya su
+// garantía de "candidate_set vacío conserva todos los chunks". Si este
+// contrato se rompe en `FileBloomIndex::candidates`, la garantía de alto
+// nivel también se rompe — los chunks pasarían sin que BM25 los pueda
+// puntuar como candidatos.
 // ---------------------------------------------------------------------------
 
 #[test]

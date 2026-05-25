@@ -1,25 +1,29 @@
-//! Tests de calidad semántica (Capa B).
+//! Tests de calidad del retrieval (Capa B).
 //!
-//! Todos los tests aquí están marcados `#[ignore]` porque requieren:
-//!   1. Descargar el modelo ONNX MiniLM L6 v2 (~80 MB, primera vez).
-//!   2. Indexar `src/` del propio repositorio con embeddings reales.
+//! Mide **Recall@5**, **MRR** y **Diversity@5** del pipeline probabilístico
+//! (Xor + BM25 + MinHash + QUBO) sobre el corpus dorado de 25 pares
+//! query↔expected_substrings curados manualmente.
+//!
+//! Sin red, sin descargas, sin modelo: cero dependencias externas. El
+//! "ground truth" se define por **substring match literal** (ver
+//! `docs/VALIDATION.md` §2), exactamente lo que BM25 está diseñado para
+//! recuperar.
 //!
 //! Ejecución:
-//!   cargo test --test semantic_quality -- --ignored --nocapture
+//!   cargo test --test semantic_quality -- --nocapture
 //!
-//! Las métricas (Recall@5, MRR, Diversity@5) se IMPRIMEN siempre por stderr;
-//! los asserts solo verifican un **piso laxo** que detecta regresión brutal,
-//! no rendimiento absoluto. Los valores objetivo se documentan tras correr,
-//! en `docs/VALIDATION.md` §5.
+//! Las métricas se IMPRIMEN siempre por stderr; los asserts solo verifican
+//! un **piso laxo** que detecta regresión brutal, no rendimiento absoluto.
+//! Valores objetivo se documentan en `docs/VALIDATION.md` §5.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use rpgrep::chunk::{chunk_file, Chunk};
-use rpgrep::embed::Embedder;
 use rpgrep::index::bloom::FileBloomIndex;
-use rpgrep::index::hnsw::HnswIndex;
+use rpgrep::index::bm25::Bm25Index;
+use rpgrep::index::minhash::MinHash;
 use rpgrep::index::store::IndexStore;
 use rpgrep::{SearchPipeline, SearchResult};
 
@@ -29,7 +33,6 @@ const TOP_K: usize = 5;
 const BUDGET: usize = 4000;
 
 // Pisos laxos: el test solo falla si el sistema está completamente roto.
-// Los valores reales se reportan por stderr y se documentan en VALIDATION.md.
 const RECALL_FLOOR: f32 = 0.30;
 const MRR_FLOOR: f32 = 0.20;
 const DIVERSITY_FLOOR: f32 = 0.40;
@@ -86,7 +89,7 @@ fn discover_rust_files(root: &Path) -> Vec<PathBuf> {
     out
 }
 
-fn build_index_real(root: &Path) -> IndexStore {
+fn build_index_lexical(root: &Path) -> IndexStore {
     let files = discover_rust_files(root);
     assert!(
         !files.is_empty(),
@@ -107,21 +110,22 @@ fn build_index_real(root: &Path) -> IndexStore {
     }
 
     eprintln!(
-        "[semantic_quality] indexando {} archivos, {} chunks; descargando/iniciando MiniLM…",
+        "[lexical_quality] indexando {} archivos, {} chunks (BM25 + MinHash, sin red)",
         files.len(),
         all_chunks.len()
     );
 
-    let embedder = Embedder::new().expect("init Embedder (requiere red la primera vez)");
-    let texts: Vec<String> = all_chunks.iter().map(|c| c.text.clone()).collect();
-    let vectors = embedder.embed_batch(texts).expect("embed_batch falló");
-    let ids: Vec<u64> = all_chunks.iter().map(|c| c.id).collect();
-    let hnsw = HnswIndex::build(vectors, ids);
+    let bm25 = Bm25Index::build(&all_chunks);
+    let minhash: HashMap<u64, MinHash> = all_chunks
+        .iter()
+        .map(|c| (c.id, MinHash::from_text(&c.text)))
+        .collect();
 
     IndexStore {
         chunks: all_chunks,
         bloom,
-        hnsw,
+        bm25,
+        minhash,
     }
 }
 
@@ -164,7 +168,6 @@ fn diversity_at_k(results: &[SearchResult]) -> f32 {
 }
 
 #[test]
-#[ignore = "requiere descarga del modelo ONNX (~80MB); ejecutar con --ignored"]
 fn recall_mrr_diversity_above_floor_on_golden_corpus() {
     let golden = load_golden(Path::new(GOLDEN_PATH));
     assert!(
@@ -173,12 +176,9 @@ fn recall_mrr_diversity_above_floor_on_golden_corpus() {
         golden.len()
     );
 
-    let store = build_index_real(Path::new(CORPUS_ROOT));
+    let store = build_index_lexical(Path::new(CORPUS_ROOT));
     let chunks_snapshot: Vec<Chunk> = store.chunks.clone();
-
-    let tmp = tempfile::tempdir().expect("tempdir");
-    store.save(tmp.path()).expect("guardar IndexStore");
-    let pipeline = SearchPipeline::load(tmp.path()).expect("cargar SearchPipeline");
+    let pipeline = SearchPipeline::from_store(store);
 
     let relevant_per_query: Vec<HashSet<u64>> = golden
         .iter()
@@ -198,7 +198,7 @@ fn recall_mrr_diversity_above_floor_on_golden_corpus() {
     let mut skipped_no_relevant = 0_usize;
 
     eprintln!(
-        "\n[semantic_quality] {:<55} {:>8} {:>8} {:>8} {:>6}",
+        "\n[lexical_quality] {:<55} {:>8} {:>8} {:>8} {:>6}",
         "query", "Recall@5", "MRR", "Div@5", "|R|"
     );
     eprintln!("{}", "-".repeat(95));
@@ -268,7 +268,7 @@ fn recall_mrr_diversity_above_floor_on_golden_corpus() {
 
     eprintln!("{}", "-".repeat(95));
     eprintln!(
-        "[semantic_quality] MEDIAS  Recall@5={recall_mean:.3}  MRR={mrr_mean:.3}  Diversity@5={div_mean:.3}  evaluadas={evaluated}  skipped={skipped_no_relevant}"
+        "[lexical_quality] MEDIAS  Recall@5={recall_mean:.3}  MRR={mrr_mean:.3}  Diversity@5={div_mean:.3}  evaluadas={evaluated}  skipped={skipped_no_relevant}"
     );
 
     assert!(

@@ -52,22 +52,26 @@ if [ ! -x "$RPGREP_BIN" ]; then
     cargo build --release --quiet
 fi
 
-# ---- build índice demo (workaround R6) ------------------------------------
+# ---- build índice -----------------------------------------------------------
+# Sin descarga: el pipeline es 100% probabilístico (Xor + BM25 + MinHash + QUBO).
 if [ ! -f "$INDEX_DIR/rpgrep.idx" ]; then
-    echo "[bench_compare] construyendo índice demo en $INDEX_DIR (descarga MiniLM la 1ª vez)…" >&2
-    cargo run --release --example build_demo_index --quiet -- "$CORPUS" "$INDEX_DIR"
+    echo "[bench_compare] construyendo índice en ${INDEX_DIR}…" >&2
+    "$RPGREP_BIN" index "$CORPUS" --out "$INDEX_DIR"
 fi
 
 # ---- helpers ---------------------------------------------------------------
 # Ejecuta un comando shell N veces y devuelve mediana en ms (1 decimal).
+# CMD/ITERS via env vars + heredoc 'PY' (sin interpolación) para evitar
+# conflictos de comillas cuando $cmd contiene `'…'` literales.
 measure_ms() {
-    local cmd="$1"
-    python3 - <<PY
-import subprocess, time, statistics
+    CMD="$1" ITERS="$ITERATIONS" python3 - <<'PY'
+import os, subprocess, time, statistics
+cmd = os.environ["CMD"]
+iters = int(os.environ["ITERS"])
 samples = []
-for _ in range($ITERATIONS):
+for _ in range(iters):
     t0 = time.perf_counter()
-    subprocess.run(r'''$cmd''', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     samples.append((time.perf_counter() - t0) * 1000.0)
 print(f"{statistics.median(samples):.1f}")
 PY
