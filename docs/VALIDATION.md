@@ -213,6 +213,24 @@ Etapas intermedias (`cargo bench --bench pipeline`, 2026-05-25, `--release`):
 > percentiles de la distribución de latencias. Para P50/P95/P99 reales
 > ver la fila gate (50 queries individuales medidas con `Instant::now`).
 
+Carga del índice (`bench_load`, comparativa formato `RPGRP002` rkyv+mmap
+vs baseline bincode v0.1, mismo `IndexStore` sintético):
+
+| Tamaño | Formato        | Media       | IC95 inf | IC95 sup | Tamaño on-disk |
+|--------|----------------|-------------|----------|----------|----------------|
+| 1k     | bincode v0.1   | 472 µs      | 458 µs   | 494 µs   | 1.36 MB        |
+| 1k     | rkyv v0.2      | **446 µs**  | 441 µs   | 452 µs   | 1.47 MB        |
+| 10k    | bincode v0.1   | 7.89 ms     | 7.68 ms  | 8.12 ms  | 13.53 MB       |
+| 10k    | rkyv v0.2      | **5.87 ms** | 5.65 ms  | 6.16 ms  | 14.67 MB       |
+
+Speedup load: **1.06×** @ 1k, **1.34×** @ 10k — la ventaja relativa
+crece con el corpus (el coste fijo de bincode parse domina a tamaño
+pequeño; a tamaño grande, rkyv evita la pasada de parseo entera). El
+formato rkyv ocupa **~8–9 % más en disco** (alignment + metadata de
+archive) — coste aceptable a cambio de carga ~34 % más rápida @ 10k.
+La medición es **warm-cache** (page cache de OS caliente entre
+iteraciones); el comportamiento cold-cache no está caracterizado.
+
 Gate de latencia (`cargo test --release --test p95_gate -- --ignored`):
 
 | Etapa               | Tamaño  | P50 (ms) | P95 (ms) | P99 (ms) |

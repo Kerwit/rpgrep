@@ -144,6 +144,49 @@ fn bench_qubo_anneal(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_load(c: &mut Criterion) {
+    let mut group = c.benchmark_group("load");
+    for &n in &[1_000usize, 10_000] {
+        let store = build_synthetic_store(n, 0xE5);
+
+        // v0.2 — rkyv + mmap (formato RPGRP002 vía IndexStore::save).
+        let dir_rkyv = tempfile::tempdir().expect("tempdir rkyv");
+        store.save(dir_rkyv.path()).expect("save rkyv");
+        let rkyv_bytes = std::fs::metadata(dir_rkyv.path().join("rpgrep.idx"))
+            .expect("rkyv stat")
+            .len();
+
+        // v0.1 baseline — bincode uniforme sobre la misma IndexStore.
+        // No usa IndexStore::load (magic distinto): replica el load v0.1
+        // como `fs::read + bincode::deserialize`.
+        let dir_bin = tempfile::tempdir().expect("tempdir bincode");
+        let bincode_bytes_buf = bincode::serialize(&store).expect("bincode serialize");
+        let bin_path = dir_bin.path().join("rpgrep.idx");
+        std::fs::write(&bin_path, &bincode_bytes_buf).expect("bincode write");
+        let bincode_bytes = bincode_bytes_buf.len() as u64;
+
+        eprintln!(
+            "[bench_load] n={n:>5}  rkyv={:>9} B  bincode={:>9} B  ratio={:.2}x",
+            rkyv_bytes,
+            bincode_bytes,
+            (rkyv_bytes as f64) / (bincode_bytes as f64)
+        );
+
+        group.bench_with_input(BenchmarkId::new("rkyv_v02", n), &n, |b, _| {
+            b.iter(|| std::hint::black_box(IndexStore::load(dir_rkyv.path()).expect("load rkyv")));
+        });
+
+        group.bench_with_input(BenchmarkId::new("bincode_v01", n), &n, |b, _| {
+            b.iter(|| {
+                let bytes = std::fs::read(&bin_path).expect("read bincode");
+                let s: IndexStore = bincode::deserialize(&bytes).expect("deserialize bincode");
+                std::hint::black_box(s)
+            });
+        });
+    }
+    group.finish();
+}
+
 fn bench_pipeline_e2e(c: &mut Criterion) {
     let mut group = c.benchmark_group("pipeline_e2e");
     let qtext = "var_unique_000007 handler_shared compute_0000";
@@ -162,6 +205,6 @@ fn bench_pipeline_e2e(c: &mut Criterion) {
 criterion_group! {
     name = benches;
     config = Criterion::default().sample_size(20);
-    targets = bench_xor_candidates, bench_bm25_topn, bench_qubo_anneal, bench_pipeline_e2e
+    targets = bench_xor_candidates, bench_bm25_topn, bench_qubo_anneal, bench_pipeline_e2e, bench_load
 }
 criterion_main!(benches);
