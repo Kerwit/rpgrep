@@ -104,7 +104,7 @@ fn build_index_lexical(root: &Path) -> IndexStore {
         let chunks = chunk_file(f, 40, 8).expect("chunk_file falló");
         if !chunks.is_empty() {
             let content = fs::read_to_string(f).expect("read_to_string falló");
-            bloom.add_file(f.clone(), &content);
+            bloom.add_file(f.to_string_lossy().into_owned(), &content);
             all_chunks.extend(chunks);
         }
     }

@@ -6,7 +6,6 @@
 
 use std::collections::HashSet;
 use std::io::Write;
-use std::path::PathBuf;
 
 use rand::Rng;
 use rand::SeedableRng;
@@ -23,11 +22,11 @@ use rpgrep::search::qubo::{QuboProblem, SimulatedAnnealer};
 /// Construye un `FileBloomIndex` con `n` archivos sintéticos, cada uno con
 /// un token único `tok_{i}` (≥3 chars) más algunos tokens compartidos para
 /// generar interferencia realista.
-fn build_synthetic_bloom(n: usize) -> (FileBloomIndex, Vec<(PathBuf, String)>) {
+fn build_synthetic_bloom(n: usize) -> (FileBloomIndex, Vec<(String, String)>) {
     let mut idx = FileBloomIndex::new();
     let mut catalog = Vec::with_capacity(n);
     for i in 0..n {
-        let path = PathBuf::from(format!("synthetic_{i}.rs"));
+        let path = format!("synthetic_{i}.rs");
         let unique = format!("tok_unique_marker_{i:06}");
         let content = format!(
             "fn handler_{i}() {{\n    let common_shared_helper = {unique}();\n    do_work();\n}}\n"
@@ -51,8 +50,7 @@ fn xor_filter_zero_false_negatives_on_random_corpus() {
         let cands = idx.candidates(unique_token);
         assert!(
             cands.contains(path),
-            "falso negativo en pre-screen: token `{unique_token}` no recupera `{}`",
-            path.display()
+            "falso negativo en pre-screen: token `{unique_token}` no recupera `{path}`"
         );
     }
 }

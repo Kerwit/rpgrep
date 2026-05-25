@@ -77,7 +77,7 @@ for r in results {
 | `index/bloom.rs`       | Xor filter por archivo (Graf & Lemire 2020)           |
 | `index/bm25.rs`        | BM25 puro Rust (Robertson 1994) — provee `rᵢ`         |
 | `index/minhash.rs`     | MinHash signatures (Broder 1997) — provee `sᵢⱼ`       |
-| `index/store.rs`       | Persistencia con `bincode` + `IndexStore::from_dir`   |
+| `index/store.rs`       | Persistencia rkyv + mmap (`RPGRP003`) + `IndexStore::from_dir` |
 | `search/qubo.rs`       | Simulated Annealing puro Rust (Metropolis)            |
 | `search/pipeline.rs`   | Orquestador A→B→C→D                                   |
 
@@ -94,7 +94,7 @@ vía relajación térmica simulada.
 - ✅ BM25 con tests de IDF, normalización por longitud, top-N filtrado
 - ✅ MinHash con tests de identidad, disjunción, error estadístico
 - ✅ Chunking por líneas con solapamiento e IDs estables (R4)
-- ✅ Persistencia con bincode
+- ✅ Persistencia rkyv + memmap2 (`RPGRP003`); load ~1.35× más rápido que bincode @ 10k chunks
 - ✅ CLI con `clap`: `index` / `search` / `stats` totalmente cableados
 - ✅ Pipeline orquestador completo (Xor → BM25 → MinHash → QUBO)
 - ✅ Test de calidad sobre corpus dorado: **MRR=1.000, Recall@5=0.37**
@@ -103,7 +103,9 @@ vía relajación térmica simulada.
 - AST-aware chunking con `tree-sitter`
 - Modo `watch` con `notify` (re-indexación incremental)
 - Modo `serve` con Unix socket
-- Migración a `rkyv` + `memmap2` para carga zero-copy
+- ⏳ Zero-copy real: `IndexStore::load_archived() -> &ArchivedIndexStore`
+  (refactor de `SearchPipeline` para operar sobre tipos archivados;
+  el formato `RPGRP003` ya soporta esto, solo falta el frontal)
 
 ## Verificación rápida
 

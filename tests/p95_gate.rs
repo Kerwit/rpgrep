@@ -17,7 +17,6 @@
 //! ninguna fase "post-embed" que aislar.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use rand::{Rng, SeedableRng};
@@ -50,8 +49,7 @@ pub fn build_synthetic_store(n_chunks: usize, seed: u64) -> IndexStore {
     let mut bloom = FileBloomIndex::new();
 
     for f in 0..n_files {
-        let path = PathBuf::from(format!("synth/file_{f:06}.rs"));
-        let file_str = path.to_string_lossy().into_owned();
+        let file_str = format!("synth/file_{f:06}.rs");
         let mut content = String::new();
         let chunks_in_file = if f == n_files - 1 {
             n_chunks - chunks.len()
@@ -75,7 +73,7 @@ pub fn build_synthetic_store(n_chunks: usize, seed: u64) -> IndexStore {
                 text,
             });
         }
-        bloom.add_file(path, &content);
+        bloom.add_file(file_str, &content);
     }
 
     let bm25 = Bm25Index::build(&chunks);

@@ -1,13 +1,11 @@
 //! Persistencia del índice completo.
 //!
-//! Formato v0.2 (`RPGRP002`):
+//! Formato v0.2 (`RPGRP003`):
 //!
 //! ```text
-//!   [0..8)     magic = b"RPGRP002"
+//!   [0..8)     magic = b"RPGRP003"
 //!   [8..16)    u64 LE: longitud del bloque rkyv
-//!   [16..24)   u64 LE: longitud del bloque bincode (bloom)
-//!   [24..24+rk_len)               : rkyv archive (chunks + bm25 + minhash)
-//!   [24+rk_len..+bc_len)          : bincode encoding de FileBloomIndex
+//!   [16..16+rk_len)   : rkyv archive (chunks + bloom + bm25 + minhash)
 //! ```
 //!
 //! La carga usa `memmap2::Mmap` para evitar la allocation de un `Vec<u8>`
@@ -16,10 +14,10 @@
 //! (devolver `&ArchivedIndexStore`) queda como tarea separada de v0.2
 //! que requiere refactor de `SearchPipeline`.
 //!
-//! `bloom` (HashMap<PathBuf, xorf::Xor8>) se serializa con bincode porque
-//! `xorf::Xor8` no implementa rkyv en v0.11; ocupa <3 % del archivo en
-//! corpus grandes, así que se acepta el coste hasta que se reemplace por
-//! un Xor filter propio rkyv-derivable.
+//! El bloom (xorf::Xor8) viaja dentro del archive rkyv vía `ArchivableXor8`
+//! (espejo de los 3 campos públicos de Xor8: seed/block_length/fingerprints).
+//! Ya no hay sección bincode separada — el .idx es un único bloque rkyv
+//! tras la cabecera.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -32,13 +30,13 @@ use rkyv::rancor::Error as RkyvError;
 use walkdir::WalkDir;
 
 use crate::chunk::{chunk_file, Chunk};
-use crate::index::bloom::FileBloomIndex;
+use crate::index::bloom::{ArchivableXor8, FileBloomIndex};
 use crate::index::bm25::Bm25Index;
 use crate::index::minhash::MinHash;
 use crate::{Result, RpgrepError};
 
-const MAGIC: &[u8; 8] = b"RPGRP002";
-const HEADER_LEN: usize = 24;
+const MAGIC: &[u8; 8] = b"RPGRP003";
+const HEADER_LEN: usize = 16;
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct IndexStore {
@@ -49,10 +47,13 @@ pub struct IndexStore {
     pub minhash: HashMap<u64, MinHash>,
 }
 
-/// Subconjunto rkyv-archivable del índice. `bloom` queda fuera (ver doc del módulo).
+/// Representación rkyv-archivable del índice completo. `bloom_filters`
+/// es la forma serializable de `FileBloomIndex` (cada `Xor8` mapeado a
+/// `ArchivableXor8`, sus 3 campos públicos).
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 struct Payload {
     chunks: Vec<Chunk>,
+    bloom_filters: HashMap<String, ArchivableXor8>,
     bm25: Bm25Index,
     minhash: HashMap<u64, MinHash>,
 }
@@ -62,21 +63,22 @@ impl IndexStore {
         std::fs::create_dir_all(dir)?;
         let path = dir.join("rpgrep.idx");
 
+        // Clone porque save(&self,...) no consume. Para 100k chunks el
+        // coste dominante es minhash (~100 MB de Vec<u64>); save es
+        // one-shot así que la pasada de memoria es aceptable.
         let payload = Payload {
             chunks: self.chunks.clone(),
+            bloom_filters: self.bloom.clone().into_archivable(),
             bm25: self.bm25.clone(),
             minhash: self.minhash.clone(),
         };
         let rkyv_bytes = rkyv::to_bytes::<RkyvError>(&payload)
             .map_err(|e| RpgrepError::Persist(format!("rkyv serialize: {e}")))?;
-        let bloom_bytes = bincode::serialize(&self.bloom)?;
 
         let mut file = File::create(&path)?;
         file.write_all(MAGIC)?;
         file.write_all(&(rkyv_bytes.len() as u64).to_le_bytes())?;
-        file.write_all(&(bloom_bytes.len() as u64).to_le_bytes())?;
         file.write_all(&rkyv_bytes)?;
-        file.write_all(&bloom_bytes)?;
         file.flush()?;
         Ok(())
     }
@@ -107,8 +109,7 @@ impl IndexStore {
         }
 
         let rkyv_len = u64::from_le_bytes(mmap[8..16].try_into().unwrap()) as usize;
-        let bloom_len = u64::from_le_bytes(mmap[16..24].try_into().unwrap()) as usize;
-        let total = HEADER_LEN.saturating_add(rkyv_len).saturating_add(bloom_len);
+        let total = HEADER_LEN.saturating_add(rkyv_len);
         if mmap.len() < total {
             return Err(RpgrepError::Persist(format!(
                 "índice {} truncado: cabecera anuncia {} bytes, archivo tiene {}",
@@ -119,15 +120,12 @@ impl IndexStore {
         }
 
         let rkyv_section = &mmap[HEADER_LEN..HEADER_LEN + rkyv_len];
-        let bloom_section = &mmap[HEADER_LEN + rkyv_len..HEADER_LEN + rkyv_len + bloom_len];
-
         let payload: Payload = rkyv::from_bytes::<Payload, RkyvError>(rkyv_section)
             .map_err(|e| RpgrepError::Persist(format!("rkyv deserialize: {e}")))?;
-        let bloom: FileBloomIndex = bincode::deserialize(bloom_section)?;
 
         Ok(Self {
             chunks: payload.chunks,
-            bloom,
+            bloom: FileBloomIndex::from_archivable(payload.bloom_filters),
             bm25: payload.bm25,
             minhash: payload.minhash,
         })
@@ -156,7 +154,7 @@ impl IndexStore {
                 Ok(cs) if !cs.is_empty() => {
                     match std::fs::read_to_string(f) {
                         Ok(content) => {
-                            bloom.add_file(f.clone(), &content);
+                            bloom.add_file(f.to_string_lossy().into_owned(), &content);
                             chunks.extend(cs);
                         }
                         Err(e) => eprintln!("[index] omito {}: {e}", f.display()),

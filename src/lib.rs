@@ -24,9 +24,6 @@ pub enum RpgrepError {
     #[error("Index: {0}")]
     Index(String),
 
-    #[error("Serialization: {0}")]
-    Serde(#[from] bincode::Error),
-
     #[error("Persist: {0}")]
     Persist(String),
 }

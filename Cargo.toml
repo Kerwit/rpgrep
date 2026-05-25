@@ -18,9 +18,8 @@ rayon = "1"
 
 # Persistencia
 serde = { version = "1", features = ["derive"] }
-bincode = "1"                                # bloque bloom (Xor8 no impl rkyv en xorf 0.11)
 memmap2 = "0.9"                              # mmap del .idx en load
-rkyv = "0.8"                                 # archive zero-copy de chunks/bm25/minhash
+rkyv = "0.8"                                 # archive del payload completo (formato RPGRP003)
 
 # CLI
 clap = { version = "4", features = ["derive"] }
@@ -34,6 +33,7 @@ walkdir = "2"
 tempfile = "3"
 criterion = { version = "0.5", features = ["html_reports"] }
 rand_chacha = "0.3"
+bincode = "1"                                # baseline histórico v0.1 en benches/pipeline.rs::bench_load
 
 [lib]
 name = "rpgrep"

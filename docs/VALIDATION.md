@@ -218,25 +218,29 @@ vs baseline bincode v0.1, mismo `IndexStore` sintético):
 
 | Tamaño | Formato        | Media       | IC95 inf | IC95 sup | Tamaño on-disk |
 |--------|----------------|-------------|----------|----------|----------------|
-| 1k     | bincode v0.1   | 472 µs      | 458 µs   | 494 µs   | 1.36 MB        |
-| 1k     | rkyv v0.2      | **446 µs**  | 441 µs   | 452 µs   | 1.47 MB        |
-| 10k    | bincode v0.1   | 7.89 ms     | 7.68 ms  | 8.12 ms  | 13.53 MB       |
-| 10k    | rkyv v0.2      | **5.87 ms** | 5.65 ms  | 6.16 ms  | 14.67 MB       |
+| 1k     | bincode v0.1   | 450 µs      | 448 µs   | 454 µs   | 1.36 MB        |
+| 1k     | rkyv v0.2.1    | **426 µs**  | 425 µs   | 429 µs   | 1.47 MB        |
+| 10k    | bincode v0.1   | 7.93 ms     | 7.89 ms  | 7.98 ms  | 13.53 MB       |
+| 10k    | rkyv v0.2.1    | **5.89 ms** | 5.87 ms  | 5.92 ms  | 14.67 MB       |
 
-Speedup load: **1.06×** @ 1k, **1.34×** @ 10k — la ventaja relativa
+Speedup load: **1.06×** @ 1k, **1.35×** @ 10k — la ventaja relativa
 crece con el corpus (el coste fijo de bincode parse domina a tamaño
 pequeño; a tamaño grande, rkyv evita la pasada de parseo entera). El
 formato rkyv ocupa **~8–9 % más en disco** (alignment + metadata de
-archive) — coste aceptable a cambio de carga ~34 % más rápida @ 10k.
+archive) — coste aceptable a cambio de carga ~35 % más rápida @ 10k.
 La medición es **warm-cache** (page cache de OS caliente entre
 iteraciones); el comportamiento cold-cache no está caracterizado.
+La versión `v0.2.1` integra el bloom dentro del archive rkyv (formato
+`RPGRP003`) sin sección bincode lateral — el speedup se mantiene
+porque la conversión `Xor8 ↔ ArchivableXor8` es O(1) (move de buffers).
 
 Gate de latencia (`cargo test --release --test p95_gate -- --ignored`):
 
 | Etapa               | Tamaño  | P50 (ms) | P95 (ms) | P99 (ms) |
 |---------------------|---------|----------|----------|----------|
-| **gate v0.1 (bincode)** | **100k** | 50.0 | 52.4     | 56.8     |
-| **gate v0.2 (rkyv)**    | **100k** | 47.8 | **50.2** | 50.4     |
+| **gate v0.1 (bincode)**     | **100k** | 50.0 | 52.4     | 56.8     |
+| **gate v0.2 (RPGRP002)**    | **100k** | 47.8 | 50.2     | 50.4     |
+| **gate v0.2.1 (RPGRP003)**  | **100k** | 50.0 | **53.0** | 53.8     |
 
 Gate: **P95 < 150 ms @ 100k chunks** (BLUEPRINT §1). Si falla, documentar
 la regresión aquí con timestamp y hash del commit.

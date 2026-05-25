@@ -39,16 +39,9 @@ impl SearchPipeline {
 
     /// Pipeline completo: [A] Xor → [B] BM25 → [C] MinHash → [D] QUBO.
     pub fn search(&self, query: &str, budget: usize, topk: usize) -> Result<Vec<SearchResult>> {
-        // [A] Pre-screen con Xor filter sobre archivos.
-        // El bloom indexa por PathBuf (compat con xorf); el chunk almacena
-        // el path como String para rkyv. Convertimos al cruzar la frontera.
-        let candidate_set: HashSet<String> = self
-            .store
-            .bloom
-            .candidates(query)
-            .into_iter()
-            .map(|p| p.to_string_lossy().into_owned())
-            .collect();
+        // [A] Pre-screen con Xor filter sobre archivos. Bloom y Chunk
+        // hablan el mismo idioma de paths (String) desde RPGRP003.
+        let candidate_set: HashSet<String> = self.store.bloom.candidates(query).into_iter().collect();
 
         // chunk_ids elegibles: si `candidate_set` está vacío (query sin tokens
         // ≥3 chars), conservamos TODOS los chunks → preserva R3.
