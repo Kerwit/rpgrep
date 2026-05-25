@@ -21,6 +21,15 @@ serde = { version = "1", features = ["derive"] }
 memmap2 = "0.9"                              # mmap del .idx en load
 rkyv = "0.8"                                 # archive del payload completo (formato RPGRP003)
 
+# Segmentación AST (excepción explícita R1: parsers determinísticos
+# generados desde grammars DSL — no son modelos pre-entrenados ni
+# requieren red. Runtime C ligero, build-script compila parsers
+# desde fuentes de los crates oficiales).
+tree-sitter = "0.22"
+tree-sitter-rust = "0.21"
+tree-sitter-python = "0.21"
+tree-sitter-javascript = "0.21"
+
 # CLI
 clap = { version = "4", features = ["derive"] }
 

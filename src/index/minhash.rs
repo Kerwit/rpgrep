@@ -79,6 +79,25 @@ impl MinHash {
     }
 }
 
+/// Estimador Jaccard ∈ [0, 1] sobre dos firmas archived. Misma matemática
+/// que `MinHash::jaccard`, comparando `u64_le` elemento a elemento.
+pub fn archived_jaccard(a: &ArchivedMinHash, b: &ArchivedMinHash) -> f32 {
+    let k = a.sig.len().min(b.sig.len());
+    if k == 0 {
+        return 0.0;
+    }
+    let sentinel = u64::MAX;
+    let both_empty = a.sig.iter().all(|v| v.to_native() == sentinel)
+        && b.sig.iter().all(|v| v.to_native() == sentinel);
+    if both_empty {
+        return 0.0;
+    }
+    let matches = (0..k)
+        .filter(|&i| a.sig[i].to_native() == b.sig[i].to_native())
+        .count();
+    matches as f32 / k as f32
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,5 +174,38 @@ mod tests {
     fn custom_k_smaller_signature() {
         let a = MinHash::from_text_with_k("alpha bravo charlie", 32);
         assert_eq!(a.k(), 32);
+    }
+
+    #[test]
+    fn archived_jaccard_matches_owned() {
+        use rkyv::rancor::Error as RkyvError;
+
+        let pairs = [
+            ("alpha bravo charlie", "alpha bravo charlie"),
+            ("alpha bravo", "uniform victor whiskey"),
+            ("", "alpha bravo"),
+            ("", ""),
+            (
+                "alpha bravo charlie delta echo foxtrot",
+                "alpha bravo papa quebec",
+            ),
+        ];
+
+        for (a_text, b_text) in pairs {
+            let a = MinHash::from_text(a_text);
+            let b = MinHash::from_text(b_text);
+            let owned = a.jaccard(&b);
+
+            let a_bytes = rkyv::to_bytes::<RkyvError>(&a).unwrap();
+            let b_bytes = rkyv::to_bytes::<RkyvError>(&b).unwrap();
+            let a_arch = rkyv::access::<ArchivedMinHash, RkyvError>(&a_bytes).unwrap();
+            let b_arch = rkyv::access::<ArchivedMinHash, RkyvError>(&b_bytes).unwrap();
+            let archived = archived_jaccard(a_arch, b_arch);
+
+            assert!(
+                (owned - archived).abs() < 1e-6,
+                "divergencia owned={owned} arch={archived} para ({a_text:?}, {b_text:?})"
+            );
+        }
     }
 }

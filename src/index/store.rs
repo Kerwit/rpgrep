@@ -8,16 +8,19 @@
 //!   [16..16+rk_len)   : rkyv archive (chunks + bloom + bm25 + minhash)
 //! ```
 //!
-//! La carga usa `memmap2::Mmap` para evitar la allocation de un `Vec<u8>`
-//! del tamaño del índice. rkyv deserializa en owned para mantener la API
-//! `load() -> IndexStore` estable; la transición a zero-copy real
-//! (devolver `&ArchivedIndexStore`) queda como tarea separada de v0.2
-//! que requiere refactor de `SearchPipeline`.
+//! Dos APIs de carga:
+//!
+//! - `IndexStore::load(dir)` deserializa a tipos owned. Útil para
+//!   construcción incremental o tests; paga la copia completa.
+//! - `MmappedStore::open(dir)` mantiene el archivo `mmap`-eado y expone
+//!   `&ArchivedPayload` (zero-copy real). Es lo que usa `SearchPipeline`
+//!   en producción. El sistema operativo pagina bajo demanda; nunca se
+//!   reserva un `Vec<u8>` del tamaño del índice.
 //!
 //! El bloom (xorf::Xor8) viaja dentro del archive rkyv vía `ArchivableXor8`
 //! (espejo de los 3 campos públicos de Xor8: seed/block_length/fingerprints).
-//! Ya no hay sección bincode separada — el .idx es un único bloque rkyv
-//! tras la cabecera.
+//! Sobre el archived, `bloom::xor_contains_archived` reimplementa
+//! `Xor8::contains` directamente sobre los slices mmap-eados.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -50,15 +53,32 @@ pub struct IndexStore {
 /// Representación rkyv-archivable del índice completo. `bloom_filters`
 /// es la forma serializable de `FileBloomIndex` (cada `Xor8` mapeado a
 /// `ArchivableXor8`, sus 3 campos públicos).
+///
+/// Público (en el crate) porque `MmappedStore::payload()` devuelve
+/// `&ArchivedPayload`, el tipo derivado por `rkyv::Archive` aquí, y
+/// `SearchPipeline` lo consume directamente.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
-struct Payload {
-    chunks: Vec<Chunk>,
-    bloom_filters: HashMap<String, ArchivableXor8>,
-    bm25: Bm25Index,
-    minhash: HashMap<u64, MinHash>,
+pub struct Payload {
+    pub chunks: Vec<Chunk>,
+    pub bloom_filters: HashMap<String, ArchivableXor8>,
+    pub bm25: Bm25Index,
+    pub minhash: HashMap<u64, MinHash>,
 }
 
 impl IndexStore {
+    /// Construye el `Payload` rkyv-archivable a partir del store owned.
+    /// Reusado por `save` y por `SearchPipeline::from_store` (camino de
+    /// tests/benches que necesitan exponer `&ArchivedPayload` sin pasar
+    /// por disco).
+    pub fn to_payload(&self) -> Payload {
+        Payload {
+            chunks: self.chunks.clone(),
+            bloom_filters: self.bloom.clone().into_archivable(),
+            bm25: self.bm25.clone(),
+            minhash: self.minhash.clone(),
+        }
+    }
+
     pub fn save(&self, dir: &Path) -> Result<()> {
         std::fs::create_dir_all(dir)?;
         let path = dir.join("rpgrep.idx");
@@ -66,12 +86,7 @@ impl IndexStore {
         // Clone porque save(&self,...) no consume. Para 100k chunks el
         // coste dominante es minhash (~100 MB de Vec<u64>); save es
         // one-shot así que la pasada de memoria es aceptable.
-        let payload = Payload {
-            chunks: self.chunks.clone(),
-            bloom_filters: self.bloom.clone().into_archivable(),
-            bm25: self.bm25.clone(),
-            minhash: self.minhash.clone(),
-        };
+        let payload = self.to_payload();
         let rkyv_bytes = rkyv::to_bytes::<RkyvError>(&payload)
             .map_err(|e| RpgrepError::Persist(format!("rkyv serialize: {e}")))?;
 
@@ -182,6 +197,84 @@ impl IndexStore {
     /// Número de archivos únicos indexados (deducido del Xor filter).
     pub fn n_files(&self) -> usize {
         self.bloom.len()
+    }
+}
+
+/// Vista zero-copy del índice: `Mmap` viva + acceso `&ArchivedPayload`.
+///
+/// `MmappedStore` es lo que usa `SearchPipeline` en producción. Validamos
+/// el header igual que `IndexStore::load`, pero NO deserializamos a tipos
+/// owned: `payload()` reinterpreta el slice rkyv-archive directamente y
+/// devuelve `&ArchivedPayload`, cuyo tiempo de vida queda atado al
+/// `MmappedStore`.
+///
+/// La validación con `rkyv::access` se hace una sola vez en `open` y
+/// queda registrada en `validated: ()` para que `payload()` pueda usar
+/// `access_unchecked` en el hot path sin re-revalidar el bytestream.
+pub struct MmappedStore {
+    mmap: Mmap,
+    rkyv_offset: usize,
+    rkyv_len: usize,
+}
+
+impl MmappedStore {
+    pub fn open(dir: &Path) -> Result<Self> {
+        let path = dir.join("rpgrep.idx");
+        let file = File::open(&path)?;
+        // SAFETY: ver `IndexStore::load`. Mismas condiciones (sin escritores
+        // concurrentes durante la vida del map).
+        let mmap = unsafe { Mmap::map(&file)? };
+
+        if mmap.len() < HEADER_LEN {
+            return Err(RpgrepError::Persist(format!(
+                "índice {} truncado: {} bytes (mínimo {})",
+                path.display(),
+                mmap.len(),
+                HEADER_LEN
+            )));
+        }
+        if &mmap[0..8] != MAGIC {
+            return Err(RpgrepError::Persist(format!(
+                "magic inválido en {}: esperaba {:?}, encontrado {:?}",
+                path.display(),
+                std::str::from_utf8(MAGIC).unwrap_or("?"),
+                std::str::from_utf8(&mmap[0..8]).unwrap_or("?")
+            )));
+        }
+
+        let rkyv_len = u64::from_le_bytes(mmap[8..16].try_into().unwrap()) as usize;
+        let total = HEADER_LEN.saturating_add(rkyv_len);
+        if mmap.len() < total {
+            return Err(RpgrepError::Persist(format!(
+                "índice {} truncado: cabecera anuncia {} bytes, archivo tiene {}",
+                path.display(),
+                total,
+                mmap.len()
+            )));
+        }
+
+        // Validación rkyv (CheckBytes). Costosa pero one-shot.
+        let rkyv_section = &mmap[HEADER_LEN..HEADER_LEN + rkyv_len];
+        rkyv::access::<ArchivedPayload, RkyvError>(rkyv_section)
+            .map_err(|e| RpgrepError::Persist(format!("rkyv access: {e}")))?;
+
+        Ok(Self {
+            mmap,
+            rkyv_offset: HEADER_LEN,
+            rkyv_len,
+        })
+    }
+
+    /// Devuelve la vista `&ArchivedPayload` mapeada en memoria.
+    ///
+    /// SAFETY: el bytestream fue validado en `open()` con
+    /// `rkyv::access`. Reusar `access_unchecked` aquí evita revalidar
+    /// en cada query (validación es O(n) sobre el archive entero).
+    pub fn payload(&self) -> &ArchivedPayload {
+        let bytes = &self.mmap[self.rkyv_offset..self.rkyv_offset + self.rkyv_len];
+        // SAFETY: validado en open(). Mientras `self` vive, `mmap` vive,
+        // y los bytes son los mismos que validamos en open().
+        unsafe { rkyv::access_unchecked::<ArchivedPayload>(bytes) }
     }
 }
 

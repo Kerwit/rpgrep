@@ -161,6 +161,110 @@ impl Bm25Index {
     }
 }
 
+/// Score BM25 del chunk para la query, operando sobre `&ArchivedBm25Index`
+/// (zero-copy: los HashMap viven en mmap).
+///
+/// Réplica exacta de la matemática de `Bm25Index::score`. La diferencia
+/// está en la indirección: en lugar de `HashMap<u64, ...>`, consultamos
+/// `ArchivedHashMap<Archived<u64>, ...>` con claves `u64_le::from_native`.
+pub fn score_archived(arch: &ArchivedBm25Index, query: &str, chunk_id: u64) -> f32 {
+    use rkyv::rend::u64_le;
+    let key = u64_le::from_native(chunk_id);
+
+    let dl = match arch.doc_len.get(&key) {
+        Some(v) => v.to_native() as f32,
+        None => return 0.0,
+    };
+    let tf_map = match arch.term_freq.get(&key) {
+        Some(m) => m,
+        None => return 0.0,
+    };
+    let avgdl = arch.avg_doc_len.to_native().max(1.0);
+    let norm = 1.0 - B + B * (dl / avgdl);
+    let n_docs = arch.n_docs.to_native() as f32;
+
+    let mut score = 0.0_f32;
+    let mut seen = std::collections::HashSet::new();
+    for token in tokenize(query) {
+        if !seen.insert(token) {
+            continue;
+        }
+        let token_key = u64_le::from_native(token);
+        let tf = match tf_map.get(&token_key) {
+            Some(v) => v.to_native() as f32,
+            None => continue,
+        };
+        let df = arch
+            .doc_freq
+            .get(&token_key)
+            .map(|v| v.to_native())
+            .unwrap_or(0) as f32;
+        let idf = ((n_docs - df + 0.5) / (df + 0.5) + 1.0).ln();
+        score += idf * (tf * (K1 + 1.0)) / (tf + K1 * norm);
+    }
+    score
+}
+
+/// Top-N chunks por score BM25 sobre el archived. Misma semántica que
+/// `Bm25Index::top_n`: si `candidates` está vacío, escanea todos los
+/// `doc_len` (preserva R3).
+pub fn top_n_archived(
+    arch: &ArchivedBm25Index,
+    query: &str,
+    candidates: &[u64],
+    n: usize,
+) -> Vec<(u64, f32)> {
+    use rkyv::rend::u64_le;
+
+    if arch.n_docs.to_native() == 0 || n == 0 {
+        return Vec::new();
+    }
+    let q_tokens: Vec<u64> = {
+        let mut seen = std::collections::HashSet::new();
+        tokenize(query).filter(|t| seen.insert(*t)).collect()
+    };
+    if q_tokens.is_empty() {
+        return Vec::new();
+    }
+
+    let mut scored: Vec<(u64, f32)> = if candidates.is_empty() {
+        arch.doc_len
+            .keys()
+            .filter_map(|k| {
+                let id = k.to_native();
+                let s = score_archived(arch, query, id);
+                if s > 0.0 {
+                    Some((id, s))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    } else {
+        candidates
+            .iter()
+            .filter_map(|&id| {
+                // Verifica que el chunk existe en el archived antes de scorear:
+                // evita malgastar tokenize→lookup cuando candidates contiene
+                // ids que no están en el índice (defensa por construcción).
+                if arch.doc_len.get(&u64_le::from_native(id)).is_none() {
+                    return None;
+                }
+                let s = score_archived(arch, query, id);
+                if s > 0.0 {
+                    Some((id, s))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    };
+
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored.truncate(n);
+    scored
+}
+
 /// Tokenizador compartido: separa por chars no `[A-Za-z0-9_]`, filtra
 /// tokens < MIN_TOKEN_LEN, lowercase, hash a u64 con `DefaultHasher`.
 /// **Devuelve duplicados** — BM25 los necesita para `tf`.
@@ -282,6 +386,69 @@ mod tests {
         let top = idx.top_n("alpha", &[2], 10);
         assert_eq!(top.len(), 1);
         assert_eq!(top[0].0, 2);
+    }
+
+    #[test]
+    fn archived_top_n_matches_owned() {
+        use rkyv::rancor::Error as RkyvError;
+
+        let chunks: Vec<Chunk> = vec![
+            make_chunk(10, "alpha beta gamma"),
+            make_chunk(20, "alpha alpha beta"),
+            make_chunk(30, "alpha alpha alpha"),
+            make_chunk(40, "delta epsilon"),
+        ];
+        let idx = Bm25Index::build(&chunks);
+        let bytes = rkyv::to_bytes::<RkyvError>(&idx).unwrap();
+        let arch = rkyv::access::<ArchivedBm25Index, RkyvError>(&bytes).unwrap();
+
+        // 1) candidates vacío (path "todos los doc_len.keys()").
+        let owned_empty = idx.top_n("alpha", &[], 3);
+        let arch_empty = top_n_archived(arch, "alpha", &[], 3);
+        assert_eq!(owned_empty.len(), arch_empty.len(), "len empty mismatch");
+        for (a, b) in owned_empty.iter().zip(arch_empty.iter()) {
+            assert_eq!(a.0, b.0, "[empty] id mismatch {:?} vs {:?}", a, b);
+            assert!(
+                (a.1 - b.1).abs() < 1e-6,
+                "[empty] score {} vs {}",
+                a.1,
+                b.1
+            );
+        }
+
+        // 2) candidates explícitos (path productivo del pipeline). Repetir
+        // con subsets variados para detectar divergencias en el lookup
+        // archived por chunk_id concreto.
+        let queries_and_candidates: Vec<(&str, Vec<u64>)> = vec![
+            ("alpha", vec![10, 20, 30, 40]),
+            ("alpha", vec![40, 30, 20, 10]),
+            ("alpha", vec![10, 30]),
+            ("alpha beta", vec![10, 20, 30, 40]),
+            ("nonexistent_token", vec![10, 20, 30, 40]),
+            ("alpha", vec![999, 40, 10]),
+        ];
+        for (q, cands) in queries_and_candidates {
+            let owned = idx.top_n(q, &cands, 10);
+            let arch = top_n_archived(arch, q, &cands, 10);
+            assert_eq!(
+                owned.len(),
+                arch.len(),
+                "len mismatch q={q:?} cands={cands:?}: owned={owned:?} arch={arch:?}"
+            );
+            for (a, b) in owned.iter().zip(arch.iter()) {
+                assert_eq!(
+                    a.0, b.0,
+                    "id mismatch q={q:?} cands={cands:?}: owned={:?} arch={:?}",
+                    a, b
+                );
+                assert!(
+                    (a.1 - b.1).abs() < 1e-6,
+                    "score mismatch q={q:?} cands={cands:?}: owned={} arch={}",
+                    a.1,
+                    b.1
+                );
+            }
+        }
     }
 
     #[test]

@@ -18,7 +18,7 @@ use rpgrep::chunk::Chunk;
 use rpgrep::index::bloom::FileBloomIndex;
 use rpgrep::index::bm25::Bm25Index;
 use rpgrep::index::minhash::MinHash;
-use rpgrep::index::store::IndexStore;
+use rpgrep::index::store::{IndexStore, MmappedStore};
 use rpgrep::search::qubo::{QuboProblem, SimulatedAnnealer};
 use rpgrep::SearchPipeline;
 
@@ -170,7 +170,17 @@ fn bench_load(c: &mut Criterion) {
             (rkyv_bytes as f64) / (bincode_bytes as f64)
         );
 
-        group.bench_with_input(BenchmarkId::new("rkyv_v02", n), &n, |b, _| {
+        // v0.2.4 — zero-copy real: MmappedStore.open mapea el archivo
+        // pero NO deserializa el payload. La diferencia con `IndexStore::load`
+        // mide exactamente el coste del rkyv::from_bytes (que reconstruye
+        // HashMaps + Vecs en heap).
+        group.bench_with_input(BenchmarkId::new("rkyv_mmap_zerocopy", n), &n, |b, _| {
+            b.iter(|| {
+                std::hint::black_box(MmappedStore::open(dir_rkyv.path()).expect("open mmap"))
+            });
+        });
+
+        group.bench_with_input(BenchmarkId::new("rkyv_v02_owned", n), &n, |b, _| {
             b.iter(|| std::hint::black_box(IndexStore::load(dir_rkyv.path()).expect("load rkyv")));
         });
 
