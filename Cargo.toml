@@ -24,6 +24,9 @@ rkyv = "0.8"                                 # archive del payload completo (for
 # CLI
 clap = { version = "4", features = ["derive"] }
 
+# Watch (modo `rpgrep watch`)
+notify-debouncer-mini = "0.4"                # batched fs events sobre `notify`
+
 # Infraestructura
 anyhow = "1"
 thiserror = "1"

@@ -101,7 +101,9 @@ vía relajación térmica simulada.
 
 **Hoja de ruta v0.2:**
 - AST-aware chunking con `tree-sitter`
-- Modo `watch` con `notify` (re-indexación incremental)
+- ✅ Modo `watch` con `notify-debouncer-mini`: re-indexa el árbol
+  ante cada quiet period (default 500 ms, configurable con
+  `--debounce-ms`).
 - Modo `serve` con Unix socket
 - ⏳ Zero-copy real: `IndexStore::load_archived() -> &ArchivedIndexStore`
   (refactor de `SearchPipeline` para operar sobre tipos archivados;
