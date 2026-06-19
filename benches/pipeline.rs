@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use rand::{Rng, SeedableRng};
+use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 
 use rpgrep::chunk::Chunk;
@@ -46,7 +46,7 @@ pub fn build_synthetic_store(n_chunks: usize, seed: u64) -> IndexStore {
         };
         for c in 0..chunks_in_file {
             let global_idx = chunks.len();
-            let filler: u32 = rng.gen_range(0..10_000);
+            let filler: u32 = rng.random_range(0..10_000);
             let text = format!(
                 "fn fn_{global_idx:06}() {{\n    let var_unique_{global_idx:06} = compute_{f:04}_{c:04}();\n    handler_shared(filler_{filler:05});\n}}\n"
             );
@@ -116,12 +116,12 @@ fn bench_qubo_anneal(c: &mut Criterion) {
     let mut group = c.benchmark_group("qubo_anneal");
     for &n in &[50usize, 100, 200] {
         let mut rng = ChaCha8Rng::seed_from_u64(0xC3 + n as u64);
-        let relevance: Vec<f32> = (0..n).map(|_| rng.gen::<f32>()).collect();
+        let relevance: Vec<f32> = (0..n).map(|_| rng.random::<f32>()).collect();
         let tokens: Vec<usize> = (0..n).map(|i| 50 + (i * 7) % 80).collect();
         let mut similarity = vec![vec![0.0_f32; n]; n];
         for i in 0..n {
             for j in (i + 1)..n {
-                let s = rng.gen::<f32>() * 0.3;
+                let s = rng.random::<f32>() * 0.3;
                 similarity[i][j] = s;
                 similarity[j][i] = s;
             }
@@ -158,7 +158,8 @@ fn bench_load(c: &mut Criterion) {
         // No usa IndexStore::load (magic distinto): replica el load v0.1
         // como `fs::read + bincode::deserialize`.
         let dir_bin = tempfile::tempdir().expect("tempdir bincode");
-        let bincode_bytes_buf = bincode::serialize(&store).expect("bincode serialize");
+        let bincode_bytes_buf =
+            bincode::serde::encode_to_vec(&store, bincode::config::standard()).expect("bincode serialize");
         let bin_path = dir_bin.path().join("rpgrep.idx");
         std::fs::write(&bin_path, &bincode_bytes_buf).expect("bincode write");
         let bincode_bytes = bincode_bytes_buf.len() as u64;
@@ -187,7 +188,9 @@ fn bench_load(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("bincode_v01", n), &n, |b, _| {
             b.iter(|| {
                 let bytes = std::fs::read(&bin_path).expect("read bincode");
-                let s: IndexStore = bincode::deserialize(&bytes).expect("deserialize bincode");
+                let (s, _): (IndexStore, usize) =
+                    bincode::serde::decode_from_slice(&bytes, bincode::config::standard())
+                        .expect("deserialize bincode");
                 std::hint::black_box(s)
             });
         });

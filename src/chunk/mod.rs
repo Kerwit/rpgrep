@@ -61,9 +61,9 @@ impl Language {
 
     fn ts_language(self) -> tree_sitter::Language {
         match self {
-            Language::Rust => tree_sitter_rust::language(),
-            Language::Python => tree_sitter_python::language(),
-            Language::JavaScript => tree_sitter_javascript::language(),
+            Language::Rust => tree_sitter_rust::LANGUAGE.into(),
+            Language::Python => tree_sitter_python::LANGUAGE.into(),
+            Language::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
         }
     }
 

@@ -9,46 +9,46 @@ readme = "README.md"
 
 [dependencies]
 # Filtros probabilísticos
-xorf = { version = "0.11", features = ["serde"] }
+xorf = { version = "0.12", features = ["serde"] }
 
 # Optimización Ising/QUBO (puro Rust, sin deps externas pesadas)
-rand = "0.8"
-rand_distr = "0.4"
-rayon = "1"
+rand = "0.10"
+rand_distr = "0.6"
+rayon = "1.12"
 
 # Persistencia
-serde = { version = "1", features = ["derive"] }
-memmap2 = "0.9"                              # mmap del .idx en load
-rkyv = "0.8"                                 # archive del payload completo (formato RPGRP003)
+serde = { version = "1.0.228", features = ["derive"] }
+memmap2 = "0.9.10"                           # mmap del .idx en load
+rkyv = "0.8.16"                              # archive del payload completo (formato RPGRP003)
 
 # Segmentación AST (excepción explícita R1: parsers determinísticos
 # generados desde grammars DSL — no son modelos pre-entrenados ni
 # requieren red. Runtime C ligero, build-script compila parsers
 # desde fuentes de los crates oficiales).
-tree-sitter = "0.22"
-tree-sitter-rust = "0.21"
-tree-sitter-python = "0.21"
-tree-sitter-javascript = "0.21"
+tree-sitter = "0.26"
+tree-sitter-rust = "0.24"
+tree-sitter-python = "0.25"
+tree-sitter-javascript = "0.25"
 
 # CLI
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4.6.1", features = ["derive"] }
 
 # Watch (modo `rpgrep watch`)
-notify-debouncer-mini = "0.4"                # batched fs events sobre `notify`
+notify-debouncer-mini = "0.7"                # batched fs events sobre `notify`
 
 # Serve (modo `rpgrep serve`)
-serde_json = "1"                             # wire JSON sobre Unix socket
+serde_json = "1.0.150"                       # wire JSON sobre Unix socket
 
 # Infraestructura
-anyhow = "1"
-thiserror = "1"
-walkdir = "2"
+anyhow = "1.0.102"
+thiserror = "2"
+walkdir = "2.5"
 
 [dev-dependencies]
-tempfile = "3"
-criterion = { version = "0.5", features = ["html_reports"] }
-rand_chacha = "0.3"
-bincode = "1"                                # baseline histórico v0.1 en benches/pipeline.rs::bench_load
+tempfile = "3.27"
+criterion = { version = "0.8", features = ["html_reports"] }
+rand_chacha = "0.10"
+bincode = { version = "2", features = ["serde"] }  # baseline histórico v0.1 en benches/pipeline.rs::bench_load (3.0 es tombstone)
 
 [lib]
 name = "rpgrep"

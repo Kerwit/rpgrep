@@ -7,8 +7,7 @@
 use std::collections::HashSet;
 use std::io::Write;
 
-use rand::Rng;
-use rand::SeedableRng;
+use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 
 use rpgrep::chunk::chunk_file;
@@ -119,12 +118,12 @@ fn empty_candidates_does_not_filter_all() {
 fn annealer_is_deterministic_with_fixed_seed() {
     let n = 30;
     let mut rng = ChaCha8Rng::seed_from_u64(0xDEAD_BEEF);
-    let relevance: Vec<f32> = (0..n).map(|_| rng.gen::<f32>()).collect();
+    let relevance: Vec<f32> = (0..n).map(|_| rng.random::<f32>()).collect();
     let tokens: Vec<usize> = (0..n).map(|i| 50 + (i * 7) % 80).collect();
     let mut similarity = vec![vec![0.0_f32; n]; n];
     for i in 0..n {
         for j in (i + 1)..n {
-            let s = rng.gen::<f32>() * 0.3;
+            let s = rng.random::<f32>() * 0.3;
             similarity[i][j] = s;
             similarity[j][i] = s;
         }

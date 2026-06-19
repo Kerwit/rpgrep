@@ -19,7 +19,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use rand::{Rng, SeedableRng};
+use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 
 use rpgrep::chunk::Chunk;
@@ -60,7 +60,7 @@ pub fn build_synthetic_store(n_chunks: usize, seed: u64) -> IndexStore {
             let global_idx = chunks.len();
             // Token raro `var_unique_X` + token compartido + entropía controlada
             // por el RNG (filler_R) para que BM25 tenga distribución no trivial.
-            let filler: u32 = rng.gen_range(0..10_000);
+            let filler: u32 = rng.random_range(0..10_000);
             let text = format!(
                 "fn fn_{global_idx:06}() {{\n    let var_unique_{global_idx:06} = compute_{f:04}_{c:04}();\n    handler_shared(filler_{filler:05});\n}}\n"
             );

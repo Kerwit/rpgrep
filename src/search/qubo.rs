@@ -87,7 +87,7 @@ impl SimulatedAnnealer {
         }
 
         let mut rng = StdRng::seed_from_u64(self.seed);
-        let uniform = Uniform::new(0.0_f32, 1.0_f32);
+        let uniform = Uniform::new(0.0_f32, 1.0_f32).expect("rango uniforme válido [0,1)");
 
         // Inicialización greedy: top-K por relevancia hasta llenar budget.
         let mut x = greedy_init(problem);
@@ -101,7 +101,7 @@ impl SimulatedAnnealer {
 
         for _ in 0..self.steps {
             // Movimiento: flip de un bit aleatorio.
-            let idx = rng.gen_range(0..n);
+            let idx = rng.random_range(0..n);
             x[idx] = !x[idx];
             let new_e = problem.energy(&x);
             let delta = new_e - cur_e;
