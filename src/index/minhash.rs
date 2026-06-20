@@ -3,7 +3,7 @@
 //! Sustituye la similitud coseno densa para `sᵢⱼ` del QUBO sin embeddings.
 //! Dada una firma de K hashes por chunk:
 //!
-//!   Ĵ(A, B) = |{ i : sig(A)[i] = sig(B)[i] }| / K
+//!   `Ĵ(A, B) = |{ i : sig(A)[i] = sig(B)[i] }| / K`
 //!
 //! Estimador insesgado de la similitud Jaccard real; varianza = J·(1-J)/K.
 //! Con K=128, error típico ~ 0.04 — suficiente para alimentar el término de
@@ -20,7 +20,9 @@ use std::hash::{Hash, Hasher};
 pub const DEFAULT_K: usize = 128;
 const MIN_TOKEN_LEN: usize = 3;
 
-#[derive(Debug, Clone, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct MinHash {
     /// K hashes mínimos. `sig[i]` = min sobre todos los tokens del
     /// `Hash64(i || token_lowercased)`.
@@ -42,13 +44,13 @@ impl MinHash {
             .filter(|t| t.len() >= MIN_TOKEN_LEN)
         {
             let lower = token.to_lowercase();
-            for i in 0..k {
+            for (i, slot) in sig.iter_mut().enumerate() {
                 let mut h = DefaultHasher::new();
                 (i as u64).hash(&mut h);
                 lower.hash(&mut h);
                 let v = h.finish();
-                if v < sig[i] {
-                    sig[i] = v;
+                if v < *slot {
+                    *slot = v;
                 }
             }
         }

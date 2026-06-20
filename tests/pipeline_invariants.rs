@@ -121,6 +121,8 @@ fn annealer_is_deterministic_with_fixed_seed() {
     let relevance: Vec<f32> = (0..n).map(|_| rng.random::<f32>()).collect();
     let tokens: Vec<usize> = (0..n).map(|i| 50 + (i * 7) % 80).collect();
     let mut similarity = vec![vec![0.0_f32; n]; n];
+    // Matriz simétrica: el índice cruzado [j][i] no se expresa con iteradores.
+    #[allow(clippy::needless_range_loop)]
     for i in 0..n {
         for j in (i + 1)..n {
             let s = rng.random::<f32>() * 0.3;

@@ -25,7 +25,9 @@ const K1: f32 = 1.5;
 const B: f32 = 0.75;
 const MIN_TOKEN_LEN: usize = 3;
 
-#[derive(Default, Clone, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+#[derive(
+    Default, Clone, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct Bm25Index {
     /// chunk_id → (token_hash → frecuencia de ese token en el chunk).
     pub term_freq: HashMap<u64, HashMap<u64, u32>>,
@@ -247,9 +249,7 @@ pub fn top_n_archived(
                 // Verifica que el chunk existe en el archived antes de scorear:
                 // evita malgastar tokenize→lookup cuando candidates contiene
                 // ids que no están en el índice (defensa por construcción).
-                if arch.doc_len.get(&u64_le::from_native(id)).is_none() {
-                    return None;
-                }
+                arch.doc_len.get(&u64_le::from_native(id))?;
                 let s = score_archived(arch, query, id);
                 if s > 0.0 {
                     Some((id, s))
@@ -408,12 +408,7 @@ mod tests {
         assert_eq!(owned_empty.len(), arch_empty.len(), "len empty mismatch");
         for (a, b) in owned_empty.iter().zip(arch_empty.iter()) {
             assert_eq!(a.0, b.0, "[empty] id mismatch {:?} vs {:?}", a, b);
-            assert!(
-                (a.1 - b.1).abs() < 1e-6,
-                "[empty] score {} vs {}",
-                a.1,
-                b.1
-            );
+            assert!((a.1 - b.1).abs() < 1e-6, "[empty] score {} vs {}", a.1, b.1);
         }
 
         // 2) candidates explícitos (path productivo del pipeline). Repetir

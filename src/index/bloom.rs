@@ -27,7 +27,9 @@ pub struct FileBloomIndex {
 /// Representación rkyv-derivable de `xorf::Xor8`. Espejo de sus 3 campos
 /// públicos; ida/vuelta sin copia significativa (move del `Vec<u8>` ↔
 /// `Box<[u8]>`).
-#[derive(Default, Clone, Debug, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+#[derive(
+    Default, Clone, Debug, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct ArchivableXor8 {
     pub seed: u64,
     pub block_length: u64,

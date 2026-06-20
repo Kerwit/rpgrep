@@ -40,8 +40,8 @@ impl QuboProblem {
             if !x[i] {
                 continue;
             }
-            for j in (i + 1)..x.len() {
-                if x[j] {
+            for (j, &xj) in x.iter().enumerate().skip(i + 1) {
+                if xj {
                     e += self.lambda * self.similarity[i][j];
                 }
             }

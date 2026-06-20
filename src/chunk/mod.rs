@@ -21,7 +21,9 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
 
-#[derive(Debug, Clone, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct Chunk {
     pub id: u64,
     /// Ruta del archivo origen en forma de string (rkyv no archiva
@@ -46,6 +48,7 @@ enum Language {
     Rust,
     Python,
     JavaScript,
+    Dart,
 }
 
 impl Language {
@@ -55,6 +58,7 @@ impl Language {
             "rs" => Some(Language::Rust),
             "py" => Some(Language::Python),
             "js" | "mjs" | "cjs" | "jsx" => Some(Language::JavaScript),
+            "dart" => Some(Language::Dart),
             _ => None,
         }
     }
@@ -64,6 +68,7 @@ impl Language {
             Language::Rust => tree_sitter_rust::LANGUAGE.into(),
             Language::Python => tree_sitter_python::LANGUAGE.into(),
             Language::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
+            Language::Dart => tree_sitter_dart::LANGUAGE.into(),
         }
     }
 
@@ -98,6 +103,17 @@ impl Language {
                 "generator_function_declaration",
                 "lexical_declaration", // `const foo = () => {}` top-level
                 "export_statement",
+            ],
+            Language::Dart => &[
+                "class_declaration",
+                "function_declaration",
+                "mixin_declaration",
+                "enum_declaration",
+                "extension_declaration",
+                "getter_declaration", // accessors top-level (`int get total => …`)
+                "setter_declaration",
+                "type_alias",                     // `typedef IntList = List<int>;`
+                "top_level_variable_declaration", // const/final/var de nivel superior
             ],
         }
     }
@@ -341,6 +357,52 @@ const gamma = (x) => x * 2;
         assert!(chunks.iter().any(|c| c.text.contains("function alpha")));
         assert!(chunks.iter().any(|c| c.text.contains("class Beta")));
         assert!(chunks.iter().any(|c| c.text.contains("greet()")));
+    }
+
+    #[test]
+    fn ast_dart_extracts_class_function_and_enum() {
+        let mut tmp = tempfile::NamedTempFile::with_suffix(".dart").unwrap();
+        let body = r#"
+import 'dart:async';
+
+void main() {
+    print('hello');
+}
+
+class Service {
+    final int id;
+    Service(this.id);
+    void run() {}
+}
+
+enum Color { red, green, blue }
+
+mixin Logger {}
+
+extension StringX on String {
+    bool get isBlank => trim().isEmpty;
+}
+"#;
+        tmp.write_all(body.as_bytes()).unwrap();
+
+        let chunks = chunk_file(tmp.path(), 40, 8).unwrap();
+        // Top-level: function main, class Service, enum Color, mixin Logger,
+        // extension StringX (import_or_export se excluye → no genera chunk).
+        assert!(
+            chunks.len() >= 5,
+            "esperaba ≥5 chunks AST en Dart, recibí {chunks:?}"
+        );
+        assert!(chunks.iter().any(|c| c.text.contains("void main()")));
+        assert!(chunks.iter().any(|c| c.text.contains("class Service")));
+        assert!(chunks.iter().any(|c| c.text.contains("enum Color")));
+        assert!(chunks.iter().any(|c| c.text.contains("extension StringX")));
+        // El import no debe constituir un chunk propio.
+        assert!(
+            !chunks
+                .iter()
+                .any(|c| c.text.trim() == "import 'dart:async';"),
+            "el import no debería ser un chunk AST"
+        );
     }
 
     #[test]

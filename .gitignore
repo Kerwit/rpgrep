@@ -4,3 +4,9 @@
 *.idx
 Cargo.lock
 .DS_Store
+
+# Workspace de Claude / documentación interna — fuera del control de versiones.
+SUMMARIES.md
+CLAUDE.md
+BLUEPRINT.md
+.claude/

@@ -119,6 +119,8 @@ fn bench_qubo_anneal(c: &mut Criterion) {
         let relevance: Vec<f32> = (0..n).map(|_| rng.random::<f32>()).collect();
         let tokens: Vec<usize> = (0..n).map(|i| 50 + (i * 7) % 80).collect();
         let mut similarity = vec![vec![0.0_f32; n]; n];
+        // Matriz simétrica: el índice cruzado [j][i] no se expresa con iteradores.
+        #[allow(clippy::needless_range_loop)]
         for i in 0..n {
             for j in (i + 1)..n {
                 let s = rng.random::<f32>() * 0.3;
@@ -158,8 +160,8 @@ fn bench_load(c: &mut Criterion) {
         // No usa IndexStore::load (magic distinto): replica el load v0.1
         // como `fs::read + bincode::deserialize`.
         let dir_bin = tempfile::tempdir().expect("tempdir bincode");
-        let bincode_bytes_buf =
-            bincode::serde::encode_to_vec(&store, bincode::config::standard()).expect("bincode serialize");
+        let bincode_bytes_buf = bincode::serde::encode_to_vec(&store, bincode::config::standard())
+            .expect("bincode serialize");
         let bin_path = dir_bin.path().join("rpgrep.idx");
         std::fs::write(&bin_path, &bincode_bytes_buf).expect("bincode write");
         let bincode_bytes = bincode_bytes_buf.len() as u64;
@@ -205,9 +207,7 @@ fn bench_pipeline_e2e(c: &mut Criterion) {
         let store = build_synthetic_store(n, 0xD4);
         let pipeline = SearchPipeline::from_store(store);
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
-            b.iter(|| {
-                std::hint::black_box(pipeline.search(std::hint::black_box(qtext), 4000, 50))
-            });
+            b.iter(|| std::hint::black_box(pipeline.search(std::hint::black_box(qtext), 4000, 50)));
         });
     }
     group.finish();

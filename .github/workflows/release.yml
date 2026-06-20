@@ -1,0 +1,72 @@
+name: Release
+
+# Dispara al empujar un tag de versión (p.ej. `git tag v0.2.4 && git push --tags`).
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Necesita escribir para crear/actualizar el GitHub Release y subir binarios.
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-release:
+    name: build / ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-13
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build binario release
+        run: cargo build --release --bin rpgrep --target ${{ matrix.target }}
+
+      - name: Empaquetar (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          dir="rpgrep-${{ github.ref_name }}-${{ matrix.target }}"
+          mkdir "$dir"
+          cp "target/${{ matrix.target }}/release/rpgrep" "$dir/"
+          cp README.md LICENSE-MIT LICENSE-APACHE "$dir/" 2>/dev/null || true
+          tar czf "$dir.tar.gz" "$dir"
+          echo "ASSET=$dir.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Empaquetar (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          dir="rpgrep-${{ github.ref_name }}-${{ matrix.target }}"
+          mkdir "$dir"
+          cp "target/${{ matrix.target }}/release/rpgrep.exe" "$dir/"
+          cp README.md LICENSE-MIT LICENSE-APACHE "$dir/" 2>/dev/null || true
+          7z a "$dir.zip" "$dir"
+          echo "ASSET=$dir.zip" >> "$GITHUB_ENV"
+
+      - name: Subir al GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ASSET }}
+          # El release se crea automáticamente para el tag si no existe.
+          fail_on_unmatched_files: true

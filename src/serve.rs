@@ -86,9 +86,8 @@ fn bind_and_serve(pipeline: Arc<SearchPipeline>, socket: &Path) -> Result<()> {
         std::fs::create_dir_all(parent)?;
     }
 
-    let listener = UnixListener::bind(socket).map_err(|e| {
-        RpgrepError::Persist(format!("bind {}: {e}", socket.display()))
-    })?;
+    let listener = UnixListener::bind(socket)
+        .map_err(|e| RpgrepError::Persist(format!("bind {}: {e}", socket.display())))?;
     eprintln!("[rpgrep serve] listo en {}", socket.display());
 
     for conn in listener.incoming() {
@@ -140,9 +139,8 @@ fn handle_connection(stream: UnixStream, pipeline: &SearchPipeline) -> Result<()
                     })
                     .collect(),
             };
-            let bytes = serde_json::to_vec(&resp).map_err(|e| {
-                RpgrepError::Persist(format!("serialize response: {e}"))
-            })?;
+            let bytes = serde_json::to_vec(&resp)
+                .map_err(|e| RpgrepError::Persist(format!("serialize response: {e}")))?;
             writer.write_all(&bytes)?;
             writer.write_all(b"\n")?;
         }

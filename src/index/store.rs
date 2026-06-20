@@ -166,15 +166,13 @@ impl IndexStore {
 
         for f in &files {
             match chunk_file(f, lines_per_chunk, overlap) {
-                Ok(cs) if !cs.is_empty() => {
-                    match std::fs::read_to_string(f) {
-                        Ok(content) => {
-                            bloom.add_file(f.to_string_lossy().into_owned(), &content);
-                            chunks.extend(cs);
-                        }
-                        Err(e) => eprintln!("[index] omito {}: {e}", f.display()),
+                Ok(cs) if !cs.is_empty() => match std::fs::read_to_string(f) {
+                    Ok(content) => {
+                        bloom.add_file(f.to_string_lossy().into_owned(), &content);
+                        chunks.extend(cs);
                     }
-                }
+                    Err(e) => eprintln!("[index] omito {}: {e}", f.display()),
+                },
                 Ok(_) => {} // archivo vacío: nada que indexar
                 Err(e) => eprintln!("[index] omito {}: {e}", f.display()),
             }
@@ -290,7 +288,9 @@ fn discover_files(root: &Path, extensions: &[&str]) -> Vec<PathBuf> {
                 return true;
             }
             match p.extension().and_then(|x| x.to_str()) {
-                Some(ext) => extensions.iter().any(|allowed| allowed.eq_ignore_ascii_case(ext)),
+                Some(ext) => extensions
+                    .iter()
+                    .any(|allowed| allowed.eq_ignore_ascii_case(ext)),
                 None => false,
             }
         })

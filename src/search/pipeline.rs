@@ -1,9 +1,9 @@
 //! Orquestación del pipeline probabilístico de búsqueda.
 //!
-//!   [A] Xor filter pre-screen   → archivos candidatos (cero falsos negativos)
-//!   [B] BM25 scoring            → top-N chunks por relevancia probabilística rᵢ
-//!   [C] MinHash Jaccard         → matriz de redundancia sᵢⱼ
-//!   [D] QUBO + Simulated SA     → selección óptima bajo budget de tokens
+//!   `[A]` Xor filter pre-screen   → archivos candidatos (cero falsos negativos)
+//!   `[B]` BM25 scoring            → top-N chunks por relevancia probabilística rᵢ
+//!   `[C]` MinHash Jaccard         → matriz de redundancia sᵢⱼ
+//!   `[D]` QUBO + Simulated SA     → selección óptima bajo budget de tokens
 //!
 //! Cero pesos pre-entrenados, cero red, cero descargas: todo el pipeline
 //! corre sobre estructuras matemáticas puras (Xor, BM25, MinHash, Metropolis).
@@ -110,16 +110,15 @@ impl SearchPipeline {
         })
     }
 
-    /// Pipeline completo: [A] Xor → [B] BM25 → [C] MinHash → [D] QUBO.
+    /// Pipeline completo: `[A]` Xor → `[B]` BM25 → `[C]` MinHash → `[D]` QUBO.
     pub fn search(&self, query: &str, budget: usize, topk: usize) -> Result<Vec<SearchResult>> {
         let payload = self.backing.payload();
 
         // [A] Pre-screen con Xor filter sobre archivos. Opera directamente
         // sobre el HashMap archived (zero-copy).
-        let candidate_set: HashSet<String> =
-            candidates_archived(&payload.bloom_filters, query)
-                .into_iter()
-                .collect();
+        let candidate_set: HashSet<String> = candidates_archived(&payload.bloom_filters, query)
+            .into_iter()
+            .collect();
 
         // chunk_ids elegibles: si `candidate_set` está vacío (query sin tokens
         // ≥3 chars), conservamos TODOS los chunks → preserva R3.

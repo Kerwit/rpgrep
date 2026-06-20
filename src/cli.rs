@@ -144,10 +144,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             for r in results {
                 println!(
                     "{}:{}-{}  score={:.3}",
-                    r.chunk.file,
-                    r.chunk.start_line,
-                    r.chunk.end_line,
-                    r.score,
+                    r.chunk.file, r.chunk.start_line, r.chunk.end_line, r.score,
                 );
             }
             Ok(())
@@ -260,7 +257,11 @@ fn run_watch(
 /// (2) coincide con una extensión indexable o no tiene extensión
 ///     (directorios / archivos sin extensión: dejamos pasar, el
 ///     re-index ya filtra por sus propios criterios).
-fn event_is_relevant(event_path: &std::path::Path, out_canonical: &Option<PathBuf>, exts: &[&str]) -> bool {
+fn event_is_relevant(
+    event_path: &std::path::Path,
+    out_canonical: &Option<PathBuf>,
+    exts: &[&str],
+) -> bool {
     if let (Some(o), Some(p)) = (out_canonical, std::fs::canonicalize(event_path).ok()) {
         if p.starts_with(o) {
             return false;
