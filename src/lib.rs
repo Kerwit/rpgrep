@@ -13,6 +13,8 @@
 pub mod chunk;
 pub mod index;
 pub mod search;
+// `serve` usa Unix domain sockets (std::os::unix::net) → solo Unix.
+#[cfg(unix)]
 pub mod serve;
 
 pub use search::pipeline::{SearchPipeline, SearchResult};

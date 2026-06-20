@@ -68,6 +68,8 @@ pub enum Commands {
 
     /// Sirve queries contra un índice en memoria vía Unix socket.
     /// Protocolo: JSON-line (una request = una response = cierre).
+    /// Solo disponible en plataformas Unix (usa Unix domain sockets).
+    #[cfg(unix)]
     Serve {
         /// Directorio del índice persistido a cargar al arrancar.
         #[arg(long, default_value = ".rpgrep")]
@@ -149,6 +151,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             }
             Ok(())
         }
+        #[cfg(unix)]
         Commands::Serve { index, socket } => {
             let sock = socket.unwrap_or_else(|| rpgrep::serve::default_socket_path(&index));
             rpgrep::serve::run(&index, &sock).map_err(anyhow::Error::from)
