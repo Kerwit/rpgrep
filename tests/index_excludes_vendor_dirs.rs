@@ -24,7 +24,10 @@ fn index_skips_node_modules_and_build_dirs() {
         "node_modules/react/index.js",
         "module.exports = function login() {}",
     );
-    mk("node_modules/typescript/lib.d.ts", "declare function login(): void;");
+    mk(
+        "node_modules/typescript/lib.d.ts",
+        "declare function login(): void;",
+    );
     mk("dist/bundle.js", "function login(){return 0;}");
     mk("target/debug/x.rs", "fn login() {}");
 
@@ -41,7 +44,10 @@ fn index_skips_node_modules_and_build_dirs() {
         );
     }
     assert!(
-        store.chunks.iter().any(|c| c.file.contains("src/auth/Login.ts")),
+        store
+            .chunks
+            .iter()
+            .any(|c| c.file.contains("src/auth/Login.ts")),
         "debería haber indexado el fuente real src/auth/Login.ts"
     );
 }
