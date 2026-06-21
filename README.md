@@ -37,6 +37,43 @@ Contexto óptimo  (relevante + diverso + dentro de presupuesto)
 **Load zero-copy**: 62 µs @ 1k chunks, 455 µs @ 10k chunks (mmap directo
 sobre `&ArchivedPayload`, 6.9×–13.6× sobre `IndexStore::load` owned).
 
+## Instalación
+
+Binarios precompilados publicados en cada [GitHub Release](https://github.com/Kerwit/rpgrep/releases).
+Targets disponibles: Linux `x86_64`, macOS `aarch64` (Apple Silicon), Windows `x86_64`.
+
+### Linux / macOS (auto-detección de SO/arch)
+
+```bash
+VERSION=v0.2.7   # o el tag deseado (ver Releases)
+
+case "$(uname -s)-$(uname -m)" in
+  Darwin-arm64)  TARGET=aarch64-apple-darwin ;;
+  Linux-x86_64)  TARGET=x86_64-unknown-linux-gnu ;;
+  *) echo "Sin binario precompilado para esta plataforma; usa 'cargo install --path .'"; exit 1 ;;
+esac
+
+curl -fsSL "https://github.com/Kerwit/rpgrep/releases/download/$VERSION/rpgrep-$VERSION-$TARGET.tar.gz" | tar xz
+sudo install -m 755 "rpgrep-$VERSION-$TARGET/rpgrep" /usr/local/bin/rpgrep   # o ~/.local/bin sin sudo
+rpgrep --version
+```
+
+### Windows (PowerShell)
+
+```powershell
+$Version = "v0.2.7"
+$Target  = "x86_64-pc-windows-msvc"
+Invoke-WebRequest "https://github.com/Kerwit/rpgrep/releases/download/$Version/rpgrep-$Version-$Target.zip" -OutFile rpgrep.zip
+Expand-Archive rpgrep.zip -DestinationPath .
+# Copia rpgrep-$Version-$Target\rpgrep.exe a un directorio incluido en el PATH
+```
+
+### Desde fuente
+
+```bash
+cargo install --path .
+```
+
 ## Uso
 
 ### CLI
