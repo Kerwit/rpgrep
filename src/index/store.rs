@@ -282,10 +282,43 @@ impl MmappedStore {
     }
 }
 
+/// Directorios que NUNCA se indexan: dependencias vendoreadas, artefactos de
+/// build, metadatos de VCS y el propio índice. Lista explícita y determinista
+/// ("Nada al azar"): no dependemos de `.gitignore` ni de heurísticas.
+const EXCLUDED_DIRS: &[&str] = &[
+    "node_modules",
+    ".git",
+    ".hg",
+    ".svn",
+    "target",
+    "dist",
+    "build",
+    ".next",
+    ".nuxt",
+    "coverage",
+    ".rpgrep",
+    ".cache",
+    "vendor",
+    "__pycache__",
+    ".venv",
+];
+
+/// `true` si la entrada es un directorio de la denylist. Usado con
+/// `filter_entry` para PODAR el subárbol completo (no se desciende en él).
+fn is_excluded_dir(entry: &walkdir::DirEntry) -> bool {
+    entry.file_type().is_dir()
+        && entry
+            .file_name()
+            .to_str()
+            .map(|n| EXCLUDED_DIRS.contains(&n))
+            .unwrap_or(false)
+}
+
 fn discover_files(root: &Path, extensions: &[&str]) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = WalkDir::new(root)
         .follow_links(false)
         .into_iter()
+        .filter_entry(|e| !is_excluded_dir(e)) // poda node_modules/, target/, … sin descender
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
         .map(|e| e.into_path())
