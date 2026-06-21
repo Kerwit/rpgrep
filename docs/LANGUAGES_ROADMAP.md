@@ -1,8 +1,9 @@
-# Roadmap v0.2.5 — Catálogo extendido de lenguajes tree-sitter
+# Roadmap v0.2.6 — Registry de lenguajes + mainstream restantes
 
-> **Estado**: 🔶 parcialmente ejecutado sobre el enum actual (sin refactor de
-> registry todavía). Ya integrados: TypeScript, TSX, Dart, C. Pendiente: el
-> refactor a `LangSpec` registry + feature flags y los mainstream restantes.
+> **Estado**: ⏳ pendiente. La **parte lenguajes shipó en v0.2.5** (TypeScript,
+> TSX, Dart, C integrados sobre el enum `Language`). Lo que queda aquí para
+> v0.2.6: el refactor a `LangSpec` registry + feature flags y los mainstream
+> restantes (Go, C++, Java). No ejecutar sin petición explícita.
 > No ejecutar el refactor sin petición explícita.
 > Referencia cruzada: `BLUEPRINT.md` §R7 y `SUMMARIES.md` "Deuda heredada (c)".
 
@@ -15,7 +16,7 @@ y **+8% Diversity@5** (ver `docs/VALIDATION.md` §5). Por cada lenguaje
 mainstream que sigamos cortando por líneas, perdemos ese diferencial sobre
 repos reales.
 
-Objetivo v0.2.5: completar cobertura AST hacia ~10 lenguajes (faltan Go,
+Objetivo v0.2.6: completar cobertura AST hacia ~10 lenguajes (faltan Go,
 C++, Java) con coste marginal mínimo y sin inflar el binario por defecto.
 
 ## 2. Patrón actual y su límite
@@ -149,7 +150,7 @@ line-based sin error visible.
 - **Refactor a `LangSpec` registry**: ~30 min.
 - **Tier 1 completo (4 lenguajes nuevos + tests)**: ~90 min.
 - **Tier 2 selectivo (3-4 lenguajes)**: ~60 min adicionales si las grammars están vigentes.
-- **Total v0.2.5 (refactor + Tier 1)**: **~2 horas**.
+- **Total v0.2.6 (refactor + Tier 1 restante)**: **~2 horas**.
 
 ## 7. Riesgos
 

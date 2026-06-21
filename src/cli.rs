@@ -9,6 +9,7 @@ use rpgrep::index::store::IndexStore;
 
 #[derive(Parser)]
 #[command(name = "rpgrep")]
+#[command(version)]
 #[command(about = "Búsqueda probabilística para código (Xor + BM25 + MinHash + QUBO)", long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
@@ -102,6 +103,9 @@ pub enum Commands {
         #[arg(long, default_value_t = 500)]
         debounce_ms: u64,
     },
+
+    /// Imprime la versión de rpgrep
+    Version,
 }
 
 pub fn dispatch(cli: Cli) -> Result<()> {
@@ -173,6 +177,10 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             println!("bm25 avg_dl:    {:.1} tokens", store.bm25.avg_doc_len);
             println!("vocab (tokens): {}", store.bm25.doc_freq.len());
             println!("minhash sigs:   {} firmas", store.minhash.len());
+            Ok(())
+        }
+        Commands::Version => {
+            println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
             Ok(())
         }
     }

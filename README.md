@@ -10,7 +10,7 @@ annealer cuántico resolvería físicamente, aquí ejecutado sobre CPU con
 muestreo Metropolis. Cero hardware especial, cero pesos pre-entrenados,
 cero descargas, cero red.
 
-**Estado actual: v0.2.4 — zero-copy real + AST chunking.**
+**Estado actual: v0.2.5 — catálogo extendido de lenguajes (7 con AST chunking).**
 
 ## Pipeline
 
@@ -98,7 +98,7 @@ for r in results {
 | `search/qubo.rs` | Simulated Annealing puro Rust (Metropolis, seed fija `0xC0DEF00D`) |
 | `search/pipeline.rs` | Orquestador A→B→C→D operando 100% sobre `&ArchivedPayload`; materializa `Chunk` owned solo al construir los `SearchResult` finales |
 | `serve.rs` | `UnixListener` thread-per-conn + `Arc<SearchPipeline>` compartido. Protocolo JSON-line |
-| `cli.rs` | Subcomandos `index` / `search` / `stats` / `watch` / `serve` |
+| `cli.rs` | Subcomandos `index` / `search` / `stats` / `watch` / `serve` / `version` (+ flag `--version`/`-V`) |
 
 Cero crates de ML, cero ONNX runtime, cero archivos de modelo, cero red
 ni en build ni en runtime. Solo matemática clásica: hashing
@@ -136,28 +136,28 @@ en agentes (LLM directo > rpgrep > ast-grep > rg > grep).
 
 ## Estado del proyecto
 
-**v0.2.4 — implementado y testeado:**
+**v0.2.5 — implementado y testeado:**
 
+- **AST chunking con tree-sitter, 7 lenguajes** (Rust/Python/JS/TS/TSX/Dart/C), fallback line-based — TS/TSX/Dart/C nuevos en esta versión
+- `index` falla con error claro si la ruta no es un directorio existente (antes: "0 chunks" silencioso)
 - QUBO + Simulated Annealing puro Rust con seed fija (R2)
 - Xor filter por archivo con tests de zero-false-negative (R3)
 - BM25 con tests de IDF, normalización por longitud, top-N filtrado
 - MinHash con tests de identidad, disjunción, error estadístico
-- **AST chunking con tree-sitter** (Rust/Python/JS/TS/TSX/Dart/C), fallback line-based
 - IDs estables `hash(path + start_line)` (R4)
 - Persistencia rkyv + memmap2, formato `RPGRP003`
 - **Zero-copy real** (`MmappedStore` + `&ArchivedPayload`): pipeline
   opera sobre archived sin deserializar; Speedup load 6.9× @ 1k, 13.6× @ 10k
-- CLI con `clap`: `index` / `search` / `stats` / `watch` / `serve`
+- CLI con `clap`: `index` / `search` / `stats` / `watch` / `serve` / `version` (+ flag `--version`/`-V`)
 - Modo `watch` con `notify-debouncer-mini` (re-index ante cambios)
 - Modo `serve` con Unix socket JSON-line (thread-per-conn)
 - Test de calidad sobre corpus dorado: **Recall@5=0.30 / MRR=0.94 / Diversity@5=0.92**
 - Gate P95 latencia: **53.8 ms @ 100k chunks** (margen 2.8× sobre 150 ms)
 
-**Roadmap v0.2.5** (⏳ documentado en `docs/LANGUAGES_ROADMAP.md`):
+**Roadmap v0.2.6** (⏳ documentado en `docs/LANGUAGES_ROADMAP.md`):
 
-- ✅ Ya integrados: TypeScript, TSX, Dart, C (sobre el enum `Language` actual)
-- ⏳ Tier 1 restante: Go, C++, Java (~80% cobertura GitHub)
 - ⏳ Refactor a `LangSpec` registry + feature flags por lenguaje
+- ⏳ Tier 1 restante: Go, C++, Java (~80% cobertura GitHub)
 - ⏳ Tier 2 opcional: Ruby, Kotlin, Swift, PHP, C#
 
 **Deuda heredada** (priorizar bajo petición explícita):
@@ -185,7 +185,7 @@ cargo bench --bench pipeline -- load               # speedup zero-copy vs owned
 - `docs/LLM_INTEGRATION.md` — Política operativa de decisión para
   agentes LLM: árbol de decisión, tabla señal→herramienta, helper
   shell, implementación Python, modo servidor, checklist.
-- `docs/LANGUAGES_ROADMAP.md` — Plan v0.2.5: registry `LangSpec` +
+- `docs/LANGUAGES_ROADMAP.md` — Plan v0.2.6: registry `LangSpec` +
   feature flags + tabla `top_level_node_kinds` para 14 lenguajes.
 - `SUMMARIES.md` — Árbol de resúmenes por archivo (evita lecturas
   ciegas del repo).
