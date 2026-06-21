@@ -133,88 +133,132 @@ impl SearchPipeline {
                 .collect()
         };
 
-        if candidate_ids.is_empty() {
+        rank(payload, query, budget, topk, candidate_ids)
+    }
+
+    /// Variante de `search` restringida a un conjunto de ficheros candidatos
+    /// (p. ej. salida de `rg -l` o `ast-grep`). Salta el pre-screen Xor `[A]`
+    /// y aplica EXACTAMENTE el mismo pipeline `[B]` BM25 → `[C]` MinHash →
+    /// `[D]` QUBO sobre los chunks cuyo fichero ∈ `files`.
+    ///
+    /// A diferencia de `search`, si `files` está vacío devuelve `Ok(vec![])`
+    /// (NO conserva todo el índice). Los ficheros ausentes del índice se
+    /// ignoran en silencio.
+    pub fn select(
+        &self,
+        query: &str,
+        budget: usize,
+        topk: usize,
+        files: &HashSet<String>,
+    ) -> Result<Vec<SearchResult>> {
+        if files.is_empty() {
             return Ok(vec![]);
         }
 
-        // [B] BM25 scoring → top-N por relevancia, vía archived.
-        let topn = top_n_archived(&payload.bm25, query, &candidate_ids, topk.max(10));
-        if topn.is_empty() {
-            return Ok(vec![]);
-        }
+        let payload = self.backing.payload();
 
-        // Resolución id → posición dentro de `payload.chunks` (sin copiar).
-        // Para 100k chunks, esto es un single-pass que construye el índice
-        // de lookup una vez por query.
-        let id_to_pos: std::collections::HashMap<u64, usize> = payload
+        let candidate_ids: Vec<u64> = payload
             .chunks
             .iter()
-            .enumerate()
-            .map(|(i, c)| (c.id.to_native(), i))
+            .filter(|c| files.contains(c.file.as_str()))
+            .map(|c| c.id.to_native())
             .collect();
 
-        let filtered: Vec<(usize, f32)> = topn
-            .into_iter()
-            .filter_map(|(id, score)| id_to_pos.get(&id).map(|&pos| (pos, score)))
-            .collect();
-        if filtered.is_empty() {
-            return Ok(vec![]);
-        }
-
-        // Normalizar relevancia a [0, 1] dividiendo por el máximo del batch.
-        let max_score = filtered
-            .iter()
-            .map(|(_, s)| *s)
-            .fold(0.0_f32, f32::max)
-            .max(1e-6);
-        let relevance: Vec<f32> = filtered.iter().map(|(_, s)| *s / max_score).collect();
-        let tokens: Vec<usize> = filtered
-            .iter()
-            .map(|(pos, _)| {
-                // token_estimate sobre el archived: text es ArchivedString.
-                let text_len = payload.chunks[*pos].text.as_str().len();
-                (text_len / 4).max(1)
-            })
-            .collect();
-
-        // [C] Matriz sᵢⱼ vía MinHash Jaccard sobre archived.
-        let similarity = archived_similarity_matrix(payload, &filtered);
-
-        // [D] QUBO + Simulated Annealing.
-        let problem = QuboProblem {
-            relevance,
-            similarity,
-            tokens,
-            budget,
-            lambda: 0.5,
-            mu: 0.001,
-        };
-        let solver = SimulatedAnnealer::default();
-        let assignment = solver.solve(&problem);
-
-        // Materializamos los Chunk seleccionados — única copia owned del
-        // pipeline. Para `topk` chunks (típicamente ≤ 50), el coste es
-        // despreciable frente a evitar copiar los 100k chunks completos.
-        let mut results: Vec<SearchResult> = filtered
-            .into_iter()
-            .enumerate()
-            .filter(|(i, _)| assignment[*i])
-            .map(|(_, (pos, s))| {
-                let arch_chunk = &payload.chunks[pos];
-                SearchResult {
-                    chunk: chunk_from_archived(arch_chunk),
-                    score: s / max_score,
-                }
-            })
-            .collect();
-
-        results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        Ok(results)
+        rank(payload, query, budget, topk, candidate_ids)
     }
+}
+
+/// Cuerpo común del pipeline tras la resolución de `candidate_ids`:
+/// `[B]` BM25 → `[C]` MinHash → `[D]` QUBO. Compartido por `search`
+/// (pre-screen Xor) y `select` (restricción por fichero).
+fn rank(
+    payload: &ArchivedPayload,
+    query: &str,
+    budget: usize,
+    topk: usize,
+    candidate_ids: Vec<u64>,
+) -> Result<Vec<SearchResult>> {
+    if candidate_ids.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // [B] BM25 scoring → top-N por relevancia, vía archived.
+    let topn = top_n_archived(&payload.bm25, query, &candidate_ids, topk.max(10));
+    if topn.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // Resolución id → posición dentro de `payload.chunks` (sin copiar).
+    // Para 100k chunks, esto es un single-pass que construye el índice
+    // de lookup una vez por query.
+    let id_to_pos: std::collections::HashMap<u64, usize> = payload
+        .chunks
+        .iter()
+        .enumerate()
+        .map(|(i, c)| (c.id.to_native(), i))
+        .collect();
+
+    let filtered: Vec<(usize, f32)> = topn
+        .into_iter()
+        .filter_map(|(id, score)| id_to_pos.get(&id).map(|&pos| (pos, score)))
+        .collect();
+    if filtered.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // Normalizar relevancia a [0, 1] dividiendo por el máximo del batch.
+    let max_score = filtered
+        .iter()
+        .map(|(_, s)| *s)
+        .fold(0.0_f32, f32::max)
+        .max(1e-6);
+    let relevance: Vec<f32> = filtered.iter().map(|(_, s)| *s / max_score).collect();
+    let tokens: Vec<usize> = filtered
+        .iter()
+        .map(|(pos, _)| {
+            // token_estimate sobre el archived: text es ArchivedString.
+            let text_len = payload.chunks[*pos].text.as_str().len();
+            (text_len / 4).max(1)
+        })
+        .collect();
+
+    // [C] Matriz sᵢⱼ vía MinHash Jaccard sobre archived.
+    let similarity = archived_similarity_matrix(payload, &filtered);
+
+    // [D] QUBO + Simulated Annealing.
+    let problem = QuboProblem {
+        relevance,
+        similarity,
+        tokens,
+        budget,
+        lambda: 0.5,
+        mu: 0.001,
+    };
+    let solver = SimulatedAnnealer::default();
+    let assignment = solver.solve(&problem);
+
+    // Materializamos los Chunk seleccionados — única copia owned del
+    // pipeline. Para `topk` chunks (típicamente ≤ 50), el coste es
+    // despreciable frente a evitar copiar los 100k chunks completos.
+    let mut results: Vec<SearchResult> = filtered
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| assignment[*i])
+        .map(|(_, (pos, s))| {
+            let arch_chunk = &payload.chunks[pos];
+            SearchResult {
+                chunk: chunk_from_archived(arch_chunk),
+                score: s / max_score,
+            }
+        })
+        .collect();
+
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    Ok(results)
 }
 
 /// Construye la matriz sᵢⱼ ∈ [0, 1] consultando las firmas MinHash del

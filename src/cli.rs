@@ -61,6 +61,28 @@ pub enum Commands {
         topk: usize,
     },
 
+    /// Re-rankea bajo presupuesto un conjunto de ficheros candidatos leído
+    /// de stdin (un path por línea, p. ej. `rg -l` o `ast-grep`), aplicando
+    /// el mismo pipeline BM25 → MinHash → QUBO que `search` pero restringido
+    /// a esos ficheros en vez del pre-screen Xor.
+    Select {
+        /// Query en lenguaje natural
+        #[arg(value_name = "QUERY")]
+        query: String,
+
+        /// Presupuesto máximo de tokens en el contexto final
+        #[arg(long, default_value_t = 4000)]
+        budget: usize,
+
+        /// Directorio del índice persistido
+        #[arg(long, default_value = ".rpgrep")]
+        index: PathBuf,
+
+        /// Top-K aproximado antes del QUBO
+        #[arg(long, default_value_t = 50)]
+        topk: usize,
+    },
+
     /// Estadísticas del índice persistido
     Stats {
         #[arg(long, default_value = ".rpgrep")]
@@ -164,6 +186,49 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             let pipeline =
                 rpgrep::SearchPipeline::load(&index).context("cargando índice persistido")?;
             let results = pipeline.search(&query, budget, topk)?;
+            for r in results {
+                println!(
+                    "{}:{}-{}  score={:.3}",
+                    r.chunk.file, r.chunk.start_line, r.chunk.end_line, r.score,
+                );
+            }
+            Ok(())
+        }
+        Commands::Select {
+            query,
+            budget,
+            index,
+            topk,
+        } => {
+            use std::collections::HashSet;
+            use std::io::{BufRead, IsTerminal};
+
+            let stdin = std::io::stdin();
+            if stdin.is_terminal() {
+                anyhow::bail!(
+                    "uso: <productor de paths> | rpgrep select \"<query>\" [--budget N] [--index DIR] [--topk N]\n\
+                     lee ficheros candidatos de stdin (un path por línea, p. ej. `rg -l PATRON | rpgrep select ...`)"
+                );
+            }
+
+            let files: HashSet<String> = stdin
+                .lock()
+                .lines()
+                .map_while(Result::ok)
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty())
+                .collect();
+
+            eprintln!(
+                "[rpgrep] Select \"{}\" sobre {} fichero(s) (budget={}, topk={})",
+                query,
+                files.len(),
+                budget,
+                topk
+            );
+            let pipeline =
+                rpgrep::SearchPipeline::load(&index).context("cargando índice persistido")?;
+            let results = pipeline.select(&query, budget, topk, &files)?;
             for r in results {
                 println!(
                     "{}:{}-{}  score={:.3}",
