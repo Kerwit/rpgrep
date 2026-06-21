@@ -48,7 +48,10 @@ enum Language {
     Rust,
     Python,
     JavaScript,
+    TypeScript,
+    Tsx,
     Dart,
+    C,
 }
 
 impl Language {
@@ -58,7 +61,10 @@ impl Language {
             "rs" => Some(Language::Rust),
             "py" => Some(Language::Python),
             "js" | "mjs" | "cjs" | "jsx" => Some(Language::JavaScript),
+            "ts" | "mts" | "cts" => Some(Language::TypeScript),
+            "tsx" => Some(Language::Tsx),
             "dart" => Some(Language::Dart),
+            "c" | "h" => Some(Language::C),
             _ => None,
         }
     }
@@ -68,7 +74,10 @@ impl Language {
             Language::Rust => tree_sitter_rust::LANGUAGE.into(),
             Language::Python => tree_sitter_python::LANGUAGE.into(),
             Language::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
+            Language::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            Language::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
             Language::Dart => tree_sitter_dart::LANGUAGE.into(),
+            Language::C => tree_sitter_c::LANGUAGE.into(),
         }
     }
 
@@ -103,6 +112,28 @@ impl Language {
                 "generator_function_declaration",
                 "lexical_declaration", // `const foo = () => {}` top-level
                 "export_statement",
+            ],
+            Language::TypeScript | Language::Tsx => &[
+                "function_declaration",
+                "generator_function_declaration",
+                "class_declaration",
+                "abstract_class_declaration",
+                "method_definition",
+                "interface_declaration",
+                "type_alias_declaration",
+                "enum_declaration",
+                "internal_module", // `namespace Foo { … }`
+                "lexical_declaration",
+                "export_statement",
+            ],
+            Language::C => &[
+                "function_definition",
+                "struct_specifier",
+                "enum_specifier",
+                "union_specifier",
+                "type_definition",     // `typedef …`
+                "declaration",         // prototipos y globales top-level
+                "preproc_function_def", // macros tipo función `#define f(x) …`
             ],
             Language::Dart => &[
                 "class_declaration",

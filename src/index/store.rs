@@ -159,6 +159,12 @@ impl IndexStore {
         lines_per_chunk: usize,
         overlap: usize,
     ) -> Result<Self> {
+        if !root.is_dir() {
+            return Err(RpgrepError::Index(format!(
+                "la ruta {} no es un directorio existente",
+                root.display()
+            )));
+        }
         let files = discover_files(root, extensions);
 
         let mut chunks: Vec<Chunk> = Vec::new();
