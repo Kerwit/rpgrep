@@ -52,6 +52,7 @@ enum Language {
     Tsx,
     Dart,
     C,
+    Go,
 }
 
 impl Language {
@@ -65,6 +66,7 @@ impl Language {
             "tsx" => Some(Language::Tsx),
             "dart" => Some(Language::Dart),
             "c" | "h" => Some(Language::C),
+            "go" => Some(Language::Go),
             _ => None,
         }
     }
@@ -78,6 +80,7 @@ impl Language {
             Language::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
             Language::Dart => tree_sitter_dart::LANGUAGE.into(),
             Language::C => tree_sitter_c::LANGUAGE.into(),
+            Language::Go => tree_sitter_go::LANGUAGE.into(),
         }
     }
 
@@ -145,6 +148,13 @@ impl Language {
                 "setter_declaration",
                 "type_alias",                     // `typedef IntList = List<int>;`
                 "top_level_variable_declaration", // const/final/var de nivel superior
+            ],
+            Language::Go => &[
+                "function_declaration",
+                "method_declaration",
+                "type_declaration", // struct/interface/alias vía type_spec
+                "const_declaration",
+                "var_declaration",
             ],
         }
     }
@@ -434,6 +444,39 @@ extension StringX on String {
                 .any(|c| c.text.trim() == "import 'dart:async';"),
             "el import no debería ser un chunk AST"
         );
+    }
+
+    #[test]
+    fn ast_go_extracts_func_method_type_and_const() {
+        let mut tmp = tempfile::NamedTempFile::with_suffix(".go").unwrap();
+        let body = r#"
+package main
+
+import "fmt"
+
+const Pi = 3.14
+
+type Service struct {
+    id int
+}
+
+func (s Service) Run() {}
+
+func main() {
+    fmt.Println("hello")
+}
+"#;
+        tmp.write_all(body.as_bytes()).unwrap();
+
+        let chunks = chunk_file(tmp.path(), 40, 8).unwrap();
+        assert!(
+            chunks.len() >= 4,
+            "esperaba ≥4 chunks AST en Go, recibí {chunks:?}"
+        );
+        assert!(chunks.iter().any(|c| c.text.contains("func main()")));
+        assert!(chunks.iter().any(|c| c.text.contains("func (s Service) Run()")));
+        assert!(chunks.iter().any(|c| c.text.contains("type Service struct")));
+        assert!(chunks.iter().any(|c| c.text.contains("const Pi")));
     }
 
     #[test]
