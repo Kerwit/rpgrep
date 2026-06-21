@@ -43,8 +43,10 @@ fi
 
 echo "Versión: $OLD -> $NEW"
 
-if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo "Aviso: hay cambios sin commitear; solo se incluirán los ficheros de versión." >&2
+if [ -n "$(git status --porcelain)" ]; then
+  echo "Árbol de trabajo sucio. Commitea o stashea los cambios antes de liberar." >&2
+  git status --short >&2
+  exit 1
 fi
 
 if git rev-parse "v$NEW" >/dev/null 2>&1; then
