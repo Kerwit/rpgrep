@@ -43,11 +43,12 @@ sobre `&ArchivedPayload`, 6.9×–13.6× sobre `IndexStore::load` owned).
 
 ```bash
 # Indexar un directorio (default: .rs). AST chunking automático
-# para Rust/Python/JavaScript; line-based fallback para el resto.
+# para Rust/Python/JavaScript/TypeScript/TSX/Dart/C; line-based fallback
+# para el resto. Error si la ruta no es un directorio existente.
 rpgrep index ./mi-proyecto --out .rpgrep
 
 # Indexar varias extensiones
-rpgrep index ./mi-proyecto --ext rs,py,js,md --out .rpgrep
+rpgrep index ./mi-proyecto --ext rs,py,js,ts,tsx,c,dart,md --out .rpgrep
 
 # Buscar con presupuesto de 4000 tokens
 rpgrep search "manejo de errores en conexiones" --budget 4000
@@ -89,7 +90,7 @@ for r in results {
 
 | Módulo | Responsabilidad |
 |---|---|
-| `chunk/` | **AST chunking** vía tree-sitter (Rust/Python/JS) + fallback line-based con solapamiento; IDs estables `hash(path + start_line)` |
+| `chunk/` | **AST chunking** vía tree-sitter (Rust/Python/JS/TS/TSX/Dart/C) + fallback line-based con solapamiento; IDs estables `hash(path + start_line)` |
 | `index/bloom.rs` | Xor filter por archivo (Graf & Lemire 2020) + `xor_contains_archived` (zero-copy) |
 | `index/bm25.rs` | BM25 puro Rust (Robertson 1994) — provee `rᵢ`; `top_n_archived` opera sobre `&ArchivedBm25Index` |
 | `index/minhash.rs` | MinHash signatures (Broder 1997) — provee `sᵢⱼ`; `archived_jaccard` sobre slices mmap |
@@ -141,7 +142,7 @@ en agentes (LLM directo > rpgrep > ast-grep > rg > grep).
 - Xor filter por archivo con tests de zero-false-negative (R3)
 - BM25 con tests de IDF, normalización por longitud, top-N filtrado
 - MinHash con tests de identidad, disjunción, error estadístico
-- **AST chunking con tree-sitter** (Rust/Python/JS), fallback line-based
+- **AST chunking con tree-sitter** (Rust/Python/JS/TS/TSX/Dart/C), fallback line-based
 - IDs estables `hash(path + start_line)` (R4)
 - Persistencia rkyv + memmap2, formato `RPGRP003`
 - **Zero-copy real** (`MmappedStore` + `&ArchivedPayload`): pipeline
@@ -154,9 +155,10 @@ en agentes (LLM directo > rpgrep > ast-grep > rg > grep).
 
 **Roadmap v0.2.5** (⏳ documentado en `docs/LANGUAGES_ROADMAP.md`):
 
-- Refactor a `LangSpec` registry + feature flags por lenguaje
-- Tier 1: Go, TypeScript, C/C++, Java (~80% cobertura GitHub)
-- Tier 2 opcional: Dart, Ruby, Kotlin, Swift, PHP, C#
+- ✅ Ya integrados: TypeScript, TSX, Dart, C (sobre el enum `Language` actual)
+- ⏳ Tier 1 restante: Go, C++, Java (~80% cobertura GitHub)
+- ⏳ Refactor a `LangSpec` registry + feature flags por lenguaje
+- ⏳ Tier 2 opcional: Ruby, Kotlin, Swift, PHP, C#
 
 **Deuda heredada** (priorizar bajo petición explícita):
 

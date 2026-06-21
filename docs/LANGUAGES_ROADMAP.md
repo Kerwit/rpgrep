@@ -1,25 +1,30 @@
 # Roadmap v0.2.5 — Catálogo extendido de lenguajes tree-sitter
 
-> **Estado**: ⏳ deuda técnica documentada. No ejecutar sin petición explícita.
+> **Estado**: 🔶 parcialmente ejecutado sobre el enum actual (sin refactor de
+> registry todavía). Ya integrados: TypeScript, TSX, Dart, C. Pendiente: el
+> refactor a `LangSpec` registry + feature flags y los mainstream restantes.
+> No ejecutar el refactor sin petición explícita.
 > Referencia cruzada: `BLUEPRINT.md` §R7 y `SUMMARIES.md` "Deuda heredada (c)".
 
 ## 1. Motivación
 
-`chunk_file` v0.2.4 cubre **3 lenguajes** (Rust, Python, JavaScript) con
-AST chunking; el resto cae a `chunk_lines` line-based. La ganancia
-medida del AST sobre line-based es **+24% Recall@5** y **+8% Diversity@5**
-(ver `docs/VALIDATION.md` §5). Por cada lenguaje mainstream que sigamos
-cortando por líneas, perdemos ese diferencial sobre repos reales.
+`chunk_file` cubre hoy **7 lenguajes** (Rust, Python, JavaScript,
+TypeScript, TSX, Dart, C) con AST chunking; el resto cae a `chunk_lines`
+line-based. La ganancia medida del AST sobre line-based es **+24% Recall@5**
+y **+8% Diversity@5** (ver `docs/VALIDATION.md` §5). Por cada lenguaje
+mainstream que sigamos cortando por líneas, perdemos ese diferencial sobre
+repos reales.
 
-Objetivo v0.2.5: llevar cobertura AST de ~3 a ~10 lenguajes con coste
-marginal mínimo y sin inflar el binario por defecto.
+Objetivo v0.2.5: completar cobertura AST hacia ~10 lenguajes (faltan Go,
+C++, Java) con coste marginal mínimo y sin inflar el binario por defecto.
 
 ## 2. Patrón actual y su límite
 
-`src/chunk/mod.rs::Language` es un enum con 3 variants. Añadir un lenguaje
+`src/chunk/mod.rs::Language` es un enum con **7 variants**. Añadir un lenguaje
 requiere tocar **3 match arms** (`from_path`, `ts_language`,
-`top_level_node_kinds`) además de la dep en `Cargo.toml`. Para 10 lenguajes
-esto genera ~30 match arms con duplicación estructural.
+`top_level_node_kinds`) además de la dep en `Cargo.toml`. Llegar a 10
+lenguajes genera ~30 match arms con duplicación estructural — de ahí el
+refactor a registry de la §3 (aún pendiente).
 
 ## 3. Plan de refactor
 
