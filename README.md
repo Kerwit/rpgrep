@@ -10,7 +10,7 @@ annealer cuántico resolvería físicamente, aquí ejecutado sobre CPU con
 muestreo Metropolis. Cero hardware especial, cero pesos pre-entrenados,
 cero descargas, cero red.
 
-**Estado actual: v0.2.6 — catálogo extendido de lenguajes (7 con AST chunking).**
+**Estado actual: v0.2.6 — catálogo extendido de lenguajes (8 con AST chunking).**
 
 ## Pipeline
 
@@ -43,12 +43,12 @@ sobre `&ArchivedPayload`, 6.9×–13.6× sobre `IndexStore::load` owned).
 
 ```bash
 # Indexar un directorio (default: .rs). AST chunking automático
-# para Rust/Python/JavaScript/TypeScript/TSX/Dart/C; line-based fallback
+# para Rust/Python/JavaScript/TypeScript/TSX/Dart/C/Go; line-based fallback
 # para el resto. Error si la ruta no es un directorio existente.
 rpgrep index ./mi-proyecto --out .rpgrep
 
 # Indexar varias extensiones
-rpgrep index ./mi-proyecto --ext rs,py,js,ts,tsx,c,dart,md --out .rpgrep
+rpgrep index ./mi-proyecto --ext rs,py,js,ts,tsx,c,dart,go,md --out .rpgrep
 
 # Buscar con presupuesto de 4000 tokens
 rpgrep search "manejo de errores en conexiones" --budget 4000
@@ -90,7 +90,7 @@ for r in results {
 
 | Módulo | Responsabilidad |
 |---|---|
-| `chunk/` | **AST chunking** vía tree-sitter (Rust/Python/JS/TS/TSX/Dart/C) + fallback line-based con solapamiento; IDs estables `hash(path + start_line)` |
+| `chunk/` | **AST chunking** vía tree-sitter (Rust/Python/JS/TS/TSX/Dart/C/Go) + fallback line-based con solapamiento; IDs estables `hash(path + start_line)` |
 | `index/bloom.rs` | Xor filter por archivo (Graf & Lemire 2020) + `xor_contains_archived` (zero-copy) |
 | `index/bm25.rs` | BM25 puro Rust (Robertson 1994) — provee `rᵢ`; `top_n_archived` opera sobre `&ArchivedBm25Index` |
 | `index/minhash.rs` | MinHash signatures (Broder 1997) — provee `sᵢⱼ`; `archived_jaccard` sobre slices mmap |
@@ -138,7 +138,7 @@ en agentes (LLM directo > rpgrep > ast-grep > rg > grep).
 
 **v0.2.6 — implementado y testeado:**
 
-- **AST chunking con tree-sitter, 7 lenguajes** (Rust/Python/JS/TS/TSX/Dart/C), fallback line-based — TS/TSX/Dart/C nuevos en esta versión
+- **AST chunking con tree-sitter, 8 lenguajes** (Rust/Python/JS/TS/TSX/Dart/C/Go), fallback line-based
 - `index` falla con error claro si la ruta no es un directorio existente (antes: "0 chunks" silencioso)
 - QUBO + Simulated Annealing puro Rust con seed fija (R2)
 - Xor filter por archivo con tests de zero-false-negative (R3)
@@ -154,10 +154,10 @@ en agentes (LLM directo > rpgrep > ast-grep > rg > grep).
 - Test de calidad sobre corpus dorado: **Recall@5=0.30 / MRR=0.94 / Diversity@5=0.92**
 - Gate P95 latencia: **53.8 ms @ 100k chunks** (margen 2.8× sobre 150 ms)
 
-**Roadmap v0.2.6** (⏳ documentado en `docs/LANGUAGES_ROADMAP.md`):
+**Roadmap** (⏳ documentado en `docs/LANGUAGES_ROADMAP.md`):
 
 - ⏳ Refactor a `LangSpec` registry + feature flags por lenguaje
-- ⏳ Tier 1 restante: Go, C++, Java (~80% cobertura GitHub)
+- ⏳ Tier 1 restante: C++, Java (~80% cobertura GitHub)
 - ⏳ Tier 2 opcional: Ruby, Kotlin, Swift, PHP, C#
 
 **Deuda heredada** (priorizar bajo petición explícita):
