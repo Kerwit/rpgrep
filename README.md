@@ -44,8 +44,11 @@ Targets disponibles: Linux `x86_64`, macOS `aarch64` (Apple Silicon), Windows `x
 
 ### Linux / macOS (auto-detección de SO/arch)
 
+Ajusta `VERSION` al tag deseado (ver [Releases](https://github.com/Kerwit/rpgrep/releases)).
+Para instalar sin `sudo`, sustituye `/usr/local/bin` por `~/.local/bin` (debe estar en tu `PATH`).
+
 ```bash
-VERSION=v0.2.7   # o el tag deseado (ver Releases)
+VERSION=v0.2.7
 
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64)  TARGET=aarch64-apple-darwin ;;
@@ -54,7 +57,7 @@ case "$(uname -s)-$(uname -m)" in
 esac
 
 curl -fsSL "https://github.com/Kerwit/rpgrep/releases/download/$VERSION/rpgrep-$VERSION-$TARGET.tar.gz" | tar xz
-sudo install -m 755 "rpgrep-$VERSION-$TARGET/rpgrep" /usr/local/bin/rpgrep   # o ~/.local/bin sin sudo
+sudo install -m 755 "rpgrep-$VERSION-$TARGET/rpgrep" /usr/local/bin/rpgrep
 rpgrep --version
 ```
 
