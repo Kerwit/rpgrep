@@ -1,76 +1,58 @@
 #!/usr/bin/env bash
-# Bump de versión + actualización de README + tag, en un solo paso.
+# Release en un solo paso: pregunta la versión y luego commitea, taggea y pushea
+# automáticamente (el tag dispara .github/workflows/release.yml).
 #
 # Uso:
-#   scripts/release.sh            # bump de patch (0.2.5 -> 0.2.6)
-#   scripts/release.sh minor      # 0.2.5 -> 0.3.0
-#   scripts/release.sh major      # 0.2.5 -> 1.0.0
-#   scripts/release.sh 1.2.3      # versión explícita
-#   scripts/release.sh --push     # además hace git push + push del tag
+#   scripts/release.sh          # pregunta la versión (default = patch +1)
+#   scripts/release.sh 1.2.3    # versión explícita, sin preguntar
 #
-# Sincroniza Cargo.toml, Cargo.lock y las referencias `vX.Y.Z` del README,
-# crea el commit `chore: release vX.Y.Z` y el tag `vX.Y.Z` (que dispara
-# .github/workflows/release.yml).
+# Si eliges la misma versión que la actual, reemplaza el tag existente
+# (lo recrea en local y remoto).
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-PUSH=0
-BUMP="patch"
-for arg in "$@"; do
-  case "$arg" in
-    --push) PUSH=1 ;;
-    patch|minor|major) BUMP="$arg" ;;
-    [0-9]*.[0-9]*.[0-9]*) BUMP="$arg" ;;
-    *) echo "Argumento no reconocido: $arg" >&2; exit 2 ;;
-  esac
-done
-
 OLD="$(perl -ne 'if (/^version = "([^"]+)"/) { print $1; exit }' Cargo.toml)"
 [ -n "$OLD" ] || { echo "No pude leer la versión de Cargo.toml" >&2; exit 1; }
 
-if [[ "$BUMP" == *.*.* ]]; then
-  NEW="$BUMP"
+IFS=. read -r MAJ MIN PAT <<<"$OLD"
+DEFAULT="$MAJ.$MIN.$((PAT + 1))"
+
+if [ $# -ge 1 ]; then
+  NEW="$1"
 else
-  IFS=. read -r MAJ MIN PAT <<<"$OLD"
-  case "$BUMP" in
-    major) MAJ=$((MAJ+1)); MIN=0; PAT=0 ;;
-    minor) MIN=$((MIN+1)); PAT=0 ;;
-    patch) PAT=$((PAT+1)) ;;
-  esac
-  NEW="$MAJ.$MIN.$PAT"
+  echo "Versión actual: $OLD"
+  read -rp "Nueva versión (enter=$DEFAULT · escribe $OLD para reemplazar el tag): " NEW
+  NEW="${NEW:-$DEFAULT}"
 fi
 
-echo "Versión: $OLD -> $NEW"
+[[ "$NEW" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Formato de versión inválido: $NEW" >&2; exit 2; }
 
-if [ -n "$(git status --porcelain)" ]; then
-  echo "Árbol de trabajo sucio. Commitea o stashea los cambios antes de liberar." >&2
-  git status --short >&2
-  exit 1
-fi
+REPLACE=0
+[ "$NEW" = "$OLD" ] && REPLACE=1
 
-if git rev-parse "v$NEW" >/dev/null 2>&1; then
-  echo "El tag v$NEW ya existe." >&2; exit 1
-fi
-
-# Cargo.toml: solo la línea version del paquete.
+# Sincroniza versión en Cargo.toml y README (no-op si NEW == OLD).
+# Cargo.lock está en .gitignore: se actualiza en local pero no se commitea.
 perl -i -pe 'BEGIN{$d=0} if (!$d && /^version = "/){ s/"[^"]+"/"'"$NEW"'"/; $d=1 }' Cargo.toml
-
-# Cargo.lock: solo el bloque del paquete rpgrep.
-perl -i -pe 'if (/^name = "rpgrep"$/){$h=1} elsif ($h && /^version = "/){ s/"[^"]+"/"'"$NEW"'"/; $h=0 }' Cargo.lock
-
-# README: todas las referencias a la versión actual.
+[ -f Cargo.lock ] && perl -i -pe 'if (/^name = "rpgrep"$/){$h=1} elsif ($h && /^version = "/){ s/"[^"]+"/"'"$NEW"'"/; $h=0 }' Cargo.lock
 perl -i -pe 's/\bv\Q'"$OLD"'\E\b/v'"$NEW"'/g' README.md
 
-git add Cargo.toml Cargo.lock README.md
-git commit -m "chore: release v$NEW"
+# Commit solo si los ficheros de versión cambiaron.
+git add Cargo.toml README.md
+if ! git diff --cached --quiet; then
+  git commit -m "chore: release v$NEW"
+fi
+
+# Tag (recrea local+remoto si se reemplaza una versión existente).
+if [ "$REPLACE" -eq 1 ] && git rev-parse "v$NEW" >/dev/null 2>&1; then
+  echo "Reemplazando tag v$NEW…"
+  git tag -d "v$NEW"
+  git push origin ":refs/tags/v$NEW" || true
+fi
 git tag -a "v$NEW" -m "v$NEW"
 
-echo "Creado commit y tag v$NEW."
-if [ "$PUSH" -eq 1 ]; then
-  git push origin HEAD
-  git push origin "v$NEW"
-  echo "Push hecho. release.yml se está ejecutando."
-else
-  echo "Para publicar:  git push origin HEAD && git push origin v$NEW"
-fi
+# Push automático.
+git push origin HEAD
+git push origin "v$NEW"
+
+echo "Release v$NEW publicado — release.yml en marcha."
