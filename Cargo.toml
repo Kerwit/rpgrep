@@ -1,6 +1,6 @@
 [package]
 name = "rpgrep"
-version = "0.2.5"
+version = "0.2.6"
 edition = "2021"
 rust-version = "1.85"  # piso de lib+bin (rand/bincode); criterion (dev) exige 1.86
 authors = ["Kerwit"]

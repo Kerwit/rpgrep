@@ -10,7 +10,7 @@ annealer cuántico resolvería físicamente, aquí ejecutado sobre CPU con
 muestreo Metropolis. Cero hardware especial, cero pesos pre-entrenados,
 cero descargas, cero red.
 
-**Estado actual: v0.2.5 — catálogo extendido de lenguajes (7 con AST chunking).**
+**Estado actual: v0.2.6 — catálogo extendido de lenguajes (7 con AST chunking).**
 
 ## Pipeline
 
@@ -136,7 +136,7 @@ en agentes (LLM directo > rpgrep > ast-grep > rg > grep).
 
 ## Estado del proyecto
 
-**v0.2.5 — implementado y testeado:**
+**v0.2.6 — implementado y testeado:**
 
 - **AST chunking con tree-sitter, 7 lenguajes** (Rust/Python/JS/TS/TSX/Dart/C), fallback line-based — TS/TSX/Dart/C nuevos en esta versión
 - `index` falla con error claro si la ruta no es un directorio existente (antes: "0 chunks" silencioso)
