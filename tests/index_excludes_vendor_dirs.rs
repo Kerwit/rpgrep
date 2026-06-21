@@ -3,6 +3,7 @@
 
 use std::fs;
 
+use rpgrep::chunk::Chunk;
 use rpgrep::index::store::IndexStore;
 
 #[test]
@@ -34,20 +35,22 @@ fn index_skips_node_modules_and_build_dirs() {
     let store = IndexStore::from_dir(root, &["ts", "tsx", "js", "rs"], 40, 8).unwrap();
 
     assert!(!store.chunks.is_empty(), "debería indexar al menos src/");
+    // Normaliza el separador para que el test sea agnóstico al SO (Windows usa `\`).
+    let norm = |c: &Chunk| c.file.replace('\\', "/");
     for c in &store.chunks {
+        let file = norm(c);
         assert!(
-            !c.file.contains("node_modules")
-                && !c.file.contains("/dist/")
-                && !c.file.contains("/target/"),
-            "indexó un fichero de un directorio excluido: {}",
-            c.file
+            !file.contains("node_modules")
+                && !file.contains("/dist/")
+                && !file.contains("/target/"),
+            "indexó un fichero de un directorio excluido: {file}"
         );
     }
     assert!(
         store
             .chunks
             .iter()
-            .any(|c| c.file.contains("src/auth/Login.ts")),
+            .any(|c| norm(c).contains("src/auth/Login.ts")),
         "debería haber indexado el fuente real src/auth/Login.ts"
     );
 }
