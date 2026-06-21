@@ -474,8 +474,12 @@ func main() {
             "esperaba ≥4 chunks AST en Go, recibí {chunks:?}"
         );
         assert!(chunks.iter().any(|c| c.text.contains("func main()")));
-        assert!(chunks.iter().any(|c| c.text.contains("func (s Service) Run()")));
-        assert!(chunks.iter().any(|c| c.text.contains("type Service struct")));
+        assert!(chunks
+            .iter()
+            .any(|c| c.text.contains("func (s Service) Run()")));
+        assert!(chunks
+            .iter()
+            .any(|c| c.text.contains("type Service struct")));
         assert!(chunks.iter().any(|c| c.text.contains("const Pi")));
     }
 
