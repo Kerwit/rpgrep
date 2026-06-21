@@ -131,8 +131,8 @@ impl Language {
                 "struct_specifier",
                 "enum_specifier",
                 "union_specifier",
-                "type_definition",     // `typedef …`
-                "declaration",         // prototipos y globales top-level
+                "type_definition",      // `typedef …`
+                "declaration",          // prototipos y globales top-level
                 "preproc_function_def", // macros tipo función `#define f(x) …`
             ],
             Language::Dart => &[
