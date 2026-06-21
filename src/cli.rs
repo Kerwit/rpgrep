@@ -224,10 +224,7 @@ fn run_update(git: String, tag: Option<String>, branch: Option<String>) -> Resul
         .status()
         .context("ejecutar `cargo install`; ¿está `cargo` en el PATH?")?;
     if !status.success() {
-        anyhow::bail!(
-            "`cargo install` terminó con código {:?}",
-            status.code()
-        );
+        anyhow::bail!("`cargo install` terminó con código {:?}", status.code());
     }
     eprintln!("[rpgrep] Actualizado correctamente.");
     Ok(())
