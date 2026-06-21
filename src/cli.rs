@@ -106,6 +106,23 @@ pub enum Commands {
 
     /// Imprime la versión de rpgrep
     Version,
+
+    /// Actualiza rpgrep a la última versión vía `cargo install --git`.
+    /// Requiere `cargo` en el PATH (cargo gestiona la red; el binario
+    /// no incorpora dependencias de red — R1).
+    Update {
+        /// Repositorio Git desde el que reinstalar.
+        #[arg(long, default_value = "https://github.com/Kerwit/rpgrep.git")]
+        git: String,
+
+        /// Tag concreto a instalar (ej. `v0.2.5`). Excluyente con `--branch`.
+        #[arg(long)]
+        tag: Option<String>,
+
+        /// Rama concreta a instalar. Excluyente con `--tag`.
+        #[arg(long, conflicts_with = "tag")]
+        branch: Option<String>,
+    },
 }
 
 pub fn dispatch(cli: Cli) -> Result<()> {
@@ -183,7 +200,37 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
             Ok(())
         }
+        Commands::Update { git, tag, branch } => run_update(git, tag, branch),
     }
+}
+
+/// Reinstala rpgrep delegando en `cargo install --git … --force`.
+/// No añade dependencias al binario: la red la consume `cargo` como
+/// herramienta externa, preservando R1 (cero red en runtime/build del índice).
+fn run_update(git: String, tag: Option<String>, branch: Option<String>) -> Result<()> {
+    use std::process::Command;
+
+    eprintln!("[rpgrep] Actualizando desde {} …", git);
+    let mut cmd = Command::new("cargo");
+    cmd.args(["install", "--git", &git, "--force"]);
+    if let Some(tag) = &tag {
+        cmd.args(["--tag", tag]);
+    }
+    if let Some(branch) = &branch {
+        cmd.args(["--branch", branch]);
+    }
+
+    let status = cmd
+        .status()
+        .context("ejecutar `cargo install`; ¿está `cargo` en el PATH?")?;
+    if !status.success() {
+        anyhow::bail!(
+            "`cargo install` terminó con código {:?}",
+            status.code()
+        );
+    }
+    eprintln!("[rpgrep] Actualizado correctamente.");
+    Ok(())
 }
 
 /// Indexa inicialmente y luego mantiene el índice sincronizado vía
