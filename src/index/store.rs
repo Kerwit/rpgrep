@@ -301,6 +301,9 @@ const EXCLUDED_DIRS: &[&str] = &[
     "vendor",
     "__pycache__",
     ".venv",
+    ".dart_tool",
+    "Pods",
+    ".gradle",
 ];
 
 /// `true` si la entrada es un directorio de la denylist. Usado con
