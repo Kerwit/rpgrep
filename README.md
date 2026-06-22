@@ -10,7 +10,7 @@ annealer cuántico resolvería físicamente, aquí ejecutado sobre CPU con
 muestreo Metropolis. Cero hardware especial, cero pesos pre-entrenados,
 cero descargas, cero red.
 
-**Estado actual: v0.2.7 — catálogo extendido de lenguajes (8 con AST chunking).**
+**Estado actual: v0.2.8 — catálogo extendido de lenguajes (8 con AST chunking).**
 
 ## Pipeline
 
@@ -48,7 +48,7 @@ Ajusta `VERSION` al tag deseado (ver [Releases](https://github.com/Kerwit/rpgrep
 Para instalar sin `sudo`, sustituye `/usr/local/bin` por `~/.local/bin` (debe estar en tu `PATH`).
 
 ```bash
-VERSION=v0.2.7
+VERSION=v0.2.8
 
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64)  TARGET=aarch64-apple-darwin ;;
@@ -64,7 +64,7 @@ rpgrep --version
 ### Windows (PowerShell)
 
 ```powershell
-$Version = "v0.2.7"
+$Version = "v0.2.8"
 $Target  = "x86_64-pc-windows-msvc"
 Invoke-WebRequest "https://github.com/Kerwit/rpgrep/releases/download/$Version/rpgrep-$Version-$Target.zip" -OutFile rpgrep.zip
 Expand-Archive rpgrep.zip -DestinationPath .
@@ -176,7 +176,7 @@ en agentes (LLM directo > rpgrep > ast-grep > rg > grep).
 
 ## Estado del proyecto
 
-**v0.2.7 — implementado y testeado:**
+**v0.2.8 — implementado y testeado:**
 
 - **AST chunking con tree-sitter, 8 lenguajes** (Rust/Python/JS/TS/TSX/Dart/C/Go), fallback line-based
 - `index` falla con error claro si la ruta no es un directorio existente (antes: "0 chunks" silencioso)
@@ -225,7 +225,7 @@ cargo bench --bench pipeline -- load               # speedup zero-copy vs owned
 - `docs/LLM_INTEGRATION.md` — Política operativa de decisión para
   agentes LLM: árbol de decisión, tabla señal→herramienta, helper
   shell, implementación Python, modo servidor, checklist.
-- `docs/LANGUAGES_ROADMAP.md` — Plan v0.2.7: registry `LangSpec` +
+- `docs/LANGUAGES_ROADMAP.md` — Plan v0.2.8: registry `LangSpec` +
   feature flags + tabla `top_level_node_kinds` para 14 lenguajes.
 - `SUMMARIES.md` — Árbol de resúmenes por archivo (evita lecturas
   ciegas del repo).
