@@ -64,6 +64,12 @@ pub enum Commands {
         /// Top-K aproximado antes del QUBO
         #[arg(long, default_value_t = 50)]
         topk: usize,
+
+        /// Corte de calidad relativo ∈ [0, 1]: descarta resultados cuyo
+        /// score normalizado (máx del batch = 1.0) quede por debajo. El
+        /// default 0.0 es inerte (no descarta nada).
+        #[arg(long, default_value_t = 0.0)]
+        min_score_ratio: f32,
     },
 
     /// Re-rankea bajo presupuesto un conjunto de ficheros candidatos leído
@@ -189,14 +195,15 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             budget,
             index,
             topk,
+            min_score_ratio,
         } => {
             eprintln!(
-                "[rpgrep] Búsqueda \"{}\" (budget={}, topk={})",
-                query, budget, topk
+                "[rpgrep] Búsqueda \"{}\" (budget={}, topk={}, min_score_ratio={})",
+                query, budget, topk, min_score_ratio
             );
             let pipeline =
                 rpgrep::SearchPipeline::load(&index).context("cargando índice persistido")?;
-            let results = pipeline.search(&query, budget, topk)?;
+            let results = pipeline.search_with_cutoff(&query, budget, topk, min_score_ratio)?;
             for r in results {
                 println!(
                     "{}:{}-{}  score={:.3}",

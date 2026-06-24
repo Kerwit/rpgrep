@@ -112,6 +112,20 @@ impl SearchPipeline {
 
     /// Pipeline completo: `[A]` Xor → `[B]` BM25 → `[C]` MinHash → `[D]` QUBO.
     pub fn search(&self, query: &str, budget: usize, topk: usize) -> Result<Vec<SearchResult>> {
+        self.search_with_cutoff(query, budget, topk, 0.0)
+    }
+
+    /// Igual que [`search`](Self::search) pero descarta los candidatos cuyo
+    /// score normalizado (relativo al máximo del batch ∈ [0, 1]) sea menor
+    /// que `min_score_ratio`. Corte scale-free, transferible entre índices.
+    /// Con `min_score_ratio == 0.0` el filtro es inerte (idéntico a `search`).
+    pub fn search_with_cutoff(
+        &self,
+        query: &str,
+        budget: usize,
+        topk: usize,
+        min_score_ratio: f32,
+    ) -> Result<Vec<SearchResult>> {
         let payload = self.backing.payload();
 
         // [A] Pre-screen con Xor filter sobre archivos. Opera directamente
@@ -133,7 +147,7 @@ impl SearchPipeline {
                 .collect()
         };
 
-        rank(payload, query, budget, topk, candidate_ids)
+        rank(payload, query, budget, topk, candidate_ids, min_score_ratio)
     }
 
     /// Variante de `search` restringida a un conjunto de ficheros candidatos
@@ -164,19 +178,24 @@ impl SearchPipeline {
             .map(|c| c.id.to_native())
             .collect();
 
-        rank(payload, query, budget, topk, candidate_ids)
+        rank(payload, query, budget, topk, candidate_ids, 0.0)
     }
 }
 
 /// Cuerpo común del pipeline tras la resolución de `candidate_ids`:
 /// `[B]` BM25 → `[C]` MinHash → `[D]` QUBO. Compartido por `search`
 /// (pre-screen Xor) y `select` (restricción por fichero).
+///
+/// `min_score_ratio` ∈ [0, 1] corta candidatos cuyo score normalizado
+/// quede por debajo del umbral, ANTES del QUBO/budget. Con `0.0` es
+/// inerte (ningún score normalizado es negativo).
 fn rank(
     payload: &ArchivedPayload,
     query: &str,
     budget: usize,
     topk: usize,
     candidate_ids: Vec<u64>,
+    min_score_ratio: f32,
 ) -> Result<Vec<SearchResult>> {
     if candidate_ids.is_empty() {
         return Ok(vec![]);
@@ -212,6 +231,23 @@ fn rank(
         .map(|(_, s)| *s)
         .fold(0.0_f32, f32::max)
         .max(1e-6);
+
+    // Corte por calidad RELATIVO sobre el score ya normalizado. Inerte
+    // con `0.0` (cortocircuita: ningún score normalizado es negativo, así
+    // que el resultado sería bit-idéntico aunque se aplicara el filtro).
+    // El top (score normalizado = 1.0) sobrevive a cualquier ratio ≤ 1.0.
+    let filtered: Vec<(usize, f32)> = if min_score_ratio > 0.0 {
+        filtered
+            .into_iter()
+            .filter(|(_, s)| *s / max_score >= min_score_ratio)
+            .collect()
+    } else {
+        filtered
+    };
+    if filtered.is_empty() {
+        return Ok(vec![]);
+    }
+
     let relevance: Vec<f32> = filtered.iter().map(|(_, s)| *s / max_score).collect();
     let tokens: Vec<usize> = filtered
         .iter()
