@@ -40,6 +40,11 @@ pub enum Commands {
         /// Pasa `--ext ""` para indexar TODOS los archivos.
         #[arg(long, value_delimiter = ',', default_values_t = vec!["rs".to_string()])]
         ext: Vec<String>,
+
+        /// Patrón glob de ficheros a EXCLUIR (repetible). Casa contra la
+        /// ruta relativa y el nombre (`SUMMARIES.md`, `*.lock`, `gen_*`).
+        #[arg(long, value_name = "PATRÓN")]
+        exclude: Vec<String>,
     },
 
     /// Búsqueda semántica con presupuesto de tokens
@@ -121,6 +126,11 @@ pub enum Commands {
         #[arg(long, value_delimiter = ',', default_values_t = vec!["rs".to_string()])]
         ext: Vec<String>,
 
+        /// Patrón glob de ficheros a EXCLUIR (repetible). Mismas reglas que
+        /// `index --exclude`; aplica también al reindexado incremental.
+        #[arg(long, value_name = "PATRÓN")]
+        exclude: Vec<String>,
+
         /// Ventana de quiet period antes de re-indexar (ms).
         #[arg(long, default_value_t = 500)]
         debounce_ms: u64,
@@ -155,11 +165,12 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             lines,
             overlap,
             ext,
+            exclude,
         } => {
             eprintln!("[rpgrep] Indexando {} → {}", path.display(), out.display());
             let exts: Vec<&str> = ext.iter().map(|s| s.as_str()).collect();
             let t0 = Instant::now();
-            let store = IndexStore::from_dir(&path, &exts, lines, overlap)
+            let store = IndexStore::from_dir_with_excludes(&path, &exts, lines, overlap, &exclude)
                 .with_context(|| format!("construir índice de {}", path.display()))?;
             eprintln!(
                 "[rpgrep] {} chunks, {} archivos indexados en {:.2}s",
@@ -248,8 +259,9 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             lines,
             overlap,
             ext,
+            exclude,
             debounce_ms,
-        } => run_watch(path, out, lines, overlap, ext, debounce_ms),
+        } => run_watch(path, out, lines, overlap, ext, exclude, debounce_ms),
         Commands::Stats { index } => {
             let store = IndexStore::load(&index).context("cargando índice persistido")?;
             println!("ruta:           {}", index.display());
@@ -308,13 +320,14 @@ fn run_watch(
     lines: usize,
     overlap: usize,
     ext: Vec<String>,
+    exclude: Vec<String>,
     debounce_ms: u64,
 ) -> Result<()> {
     let exts: Vec<&str> = ext.iter().map(|s| s.as_str()).collect();
 
     let rebuild = |reason: &str| -> Result<()> {
         let t0 = Instant::now();
-        let store = IndexStore::from_dir(&path, &exts, lines, overlap)
+        let store = IndexStore::from_dir_with_excludes(&path, &exts, lines, overlap, &exclude)
             .with_context(|| format!("indexar {}", path.display()))?;
         let chunks = store.chunks.len();
         let files = store.n_files();

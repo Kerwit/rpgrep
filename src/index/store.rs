@@ -159,13 +159,28 @@ impl IndexStore {
         lines_per_chunk: usize,
         overlap: usize,
     ) -> Result<Self> {
+        Self::from_dir_with_excludes(root, extensions, lines_per_chunk, overlap, &[])
+    }
+
+    /// Igual que [`from_dir`](Self::from_dir) pero además descarta los
+    /// ficheros cuya ruta relativa (o nombre) case con cualquiera de los
+    /// patrones `excludes`. Glob simple: nombre exacto y `*` como comodín
+    /// (p. ej. `SUMMARIES.md`, `*.lock`, `gen_*`). Exclusión explícita,
+    /// sin `.gitignore` — coherente con la denylist estática.
+    pub fn from_dir_with_excludes(
+        root: &Path,
+        extensions: &[&str],
+        lines_per_chunk: usize,
+        overlap: usize,
+        excludes: &[String],
+    ) -> Result<Self> {
         if !root.is_dir() {
             return Err(RpgrepError::Index(format!(
                 "la ruta {} no es un directorio existente",
                 root.display()
             )));
         }
-        let files = discover_files(root, extensions);
+        let files = discover_files(root, extensions, excludes);
 
         let mut chunks: Vec<Chunk> = Vec::new();
         let mut bloom = FileBloomIndex::new();
@@ -317,7 +332,7 @@ fn is_excluded_dir(entry: &walkdir::DirEntry) -> bool {
             .unwrap_or(false)
 }
 
-fn discover_files(root: &Path, extensions: &[&str]) -> Vec<PathBuf> {
+fn discover_files(root: &Path, extensions: &[&str], excludes: &[String]) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = WalkDir::new(root)
         .follow_links(false)
         .into_iter()
@@ -336,7 +351,60 @@ fn discover_files(root: &Path, extensions: &[&str]) -> Vec<PathBuf> {
                 None => false,
             }
         })
+        .filter(|p| !is_excluded_path(p, root, excludes))
         .collect();
     out.sort();
     out
+}
+
+/// `true` si el fichero `p` debe descartarse por `--exclude`. Casa cada
+/// patrón contra la ruta relativa a `root` y contra el nombre del fichero,
+/// de modo que `--exclude SUMMARIES.md` excluye el fichero esté donde esté.
+fn is_excluded_path(p: &Path, root: &Path, excludes: &[String]) -> bool {
+    if excludes.is_empty() {
+        return false;
+    }
+    let rel = p.strip_prefix(root).unwrap_or(p);
+    let rel_str = rel.to_string_lossy();
+    let name = p
+        .file_name()
+        .map(|n| n.to_string_lossy())
+        .unwrap_or_default();
+    excludes
+        .iter()
+        .any(|pat| glob_match(&rel_str, pat) || glob_match(&name, pat))
+}
+
+/// Glob mínimo: `*` casa cualquier secuencia (incluida vacía); el resto de
+/// caracteres son literales. Sin `?` ni clases — suficiente para nombres y
+/// sufijos/prefijos (`*.lock`, `gen_*`, `SUMMARIES.md`).
+fn glob_match(haystack: &str, pattern: &str) -> bool {
+    if !pattern.contains('*') {
+        return haystack == pattern;
+    }
+    let parts: Vec<&str> = pattern.split('*').collect();
+    let mut pos = 0usize;
+    for (i, part) in parts.iter().enumerate() {
+        if part.is_empty() {
+            continue;
+        }
+        let is_first = i == 0;
+        let is_last = i == parts.len() - 1;
+        match haystack[pos..].find(part) {
+            Some(off) => {
+                // El primer segmento debe anclar al inicio si el patrón no
+                // empieza por `*`.
+                if is_first && off != 0 {
+                    return false;
+                }
+                pos += off + part.len();
+            }
+            None => return false,
+        }
+        // El último segmento debe anclar al final si el patrón no acaba en `*`.
+        if is_last && !haystack.ends_with(part) {
+            return false;
+        }
+    }
+    true
 }
